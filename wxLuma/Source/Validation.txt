@@ -1,0 +1,11 @@
+Validated October 20, 2026 on the current Windows x64 workstation:
+- Built a new test.exe from Source/test.c using MSVC /W4 /WX /O2 /MT, no compiler warnings/errors. Lua is delay-loaded from Bin.
+- Recursive native import inspection selected 15 Lua/wx DLLs plus three Microsoft CRT DLLs. Remaining imports are Windows system/UCRT libraries.
+- Verified 94 exact copies by SHA-256 (19 unchanged reusable modules, 57 PNGs, 18 runtime DLLs). Window.lua and Tests/UI.lua differ from source only by the documented export branding/sample-message replacements.
+- Relocated an independent copy outside the repository, launched from an unrelated working directory with PATH restricted to Windows System32 and all Lua search-path environment variables removed.
+- test.exe --smoke exited 0 after showing the workbench, switching tabs, setting list selection, resizing the live panel, closing and explicit garbage collection. LuaEx absent throughout.
+- A separate normal launch displayed the workbench and accepted native close. Module inspection showed all Lua/wx/Microsoft runtime dependencies loaded from relocated Bin. This workstation also injected installed WindowBlinds desktop hooks; those are not package dependencies. The separate process object's exit code was unavailable, so only the smoke launch is reported as exit 0.
+- No LuaEx package, junctions, symlinks, original application launcher/startup, catalog, mods or preferences in export. Scripts search paths are limited to export-relative locations.
+- No clean-machine or second-workstation validation performed. Windows x64/system UCRT still required.
+
+Source manifests record copied module/asset/runtime hashes. SHA256SUMS.txt records final packaged files. No original game/framework file was edited. No staging, commits or push.
