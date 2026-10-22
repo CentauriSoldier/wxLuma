@@ -1,1 +1,1 @@
-UI workbench startup, tab/list/panel operations, close and garbage collection passed.
+UI gallery startup, category navigation, list/panel/editor bindings, close and garbage collection passed.

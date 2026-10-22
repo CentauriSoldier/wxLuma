@@ -396,7 +396,7 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    tWorkbench.Widgets.Tabs.setValue(12);
+    tWorkbench.Gallery.show("CheckTreeToggle", true);
     tWorkbench.Layout();
     _wx.wxYield();
     check(not tWorkbench.Widgets.CheckListEx.isCheckboxesEnabled() and not tWorkbench.Widgets.TreeEx.isCheckboxesEnabled(),
@@ -406,6 +406,7 @@ local function run()
     check(tWorkbench.Widgets.TreeEx.isCheckPropagationEnabled(), "Workbench cascade defaults on.");
     check(#tWorkbench.Widgets.TreeEx.getColumns() == 2 and tWorkbench.Widgets.TreeEx.getNode("faramir").Image ~= nil,
         "Workbench TreeEx uses inline node icons rather than a far-left Picture column.");
+    tWorkbench.Gallery.show("TreeExPropagation", true);
     click(tWorkbench.Widgets.TreeExPropagation.Control, 10, 16);
     check(not tWorkbench.Widgets.TreeEx.isCheckPropagationEnabled(), "Workbench exposes cascade opt-out.");
     tWorkbench.Frame:Close();

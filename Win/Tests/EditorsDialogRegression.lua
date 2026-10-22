@@ -394,8 +394,8 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    check(#tWorkbench.Widgets.Tabs.Pages == 12, "Workbench category added.");
-    tWorkbench.Widgets.Tabs.setValue(9);
+    check(#tWorkbench.Widgets.Tabs.Pages == #tWorkbench.Gallery.Categories, "Every gallery category has a tab.");
+    tWorkbench.Gallery.show("Dialog", true);
     tWorkbench.Layout();
     check(tWorkbench.Widgets.ToggleButton and tWorkbench.Widgets.NumericField
         and tWorkbench.Widgets.Dialog and tWorkbench.Widgets.ModalDialog, "All objects demonstrated.");

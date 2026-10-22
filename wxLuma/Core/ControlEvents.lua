@@ -1,4 +1,5 @@
 local _wx = require("wx");
+local _tAttached = setmetatable({}, {__mode = "k"});
 local ControlEvents = {};
 
 --[[!
@@ -13,6 +14,15 @@ local ControlEvents = {};
 @ret table tEvents Private emit/bind helpers for widget implementation.
 !]]
 function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
+    -- Bases install native observers once. Widgets can subsequently add their
+    -- semantic names and owned surfaces without replacing existing listeners.
+    local tExisting = _tAttached[oComponent];
+
+    if (tExisting) then
+        tExisting.extend(tTargets, tExtraEvents);
+        return tExisting;
+    end
+
     local tListeners  = {};
     local tBound      = {};
     local tPressResets = {};
@@ -194,9 +204,12 @@ function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
                 tPressed[sButton] = true;
             end);
             fObserve(tButton[3], sButton.."Up", fMouse, function(tData)
-                local nWidth, nHeight = oComponent.Control:GetClientSizeWH();
-                local bClick = tPressed[sButton] and tData.X >= 0 and tData.Y >= 0 and
-                    tData.X < nWidth and tData.Y < nHeight;
+                -- Owned editors and tooltip targets have their own bounds.
+                -- Payload coordinates still remain relative to the component.
+                local nWidth, nHeight = oTarget:GetClientSizeWH();
+                local nX, nY = tData.NativeEvent:GetX(), tData.NativeEvent:GetY();
+                local bClick = tPressed[sButton] and nX >= 0 and nY >= 0 and
+                    nX < nWidth and nY < nHeight;
                 tPressed[sButton] = nil;
 
                 if (bClick) then
@@ -230,6 +243,24 @@ function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
 
             return tData;
         end);
+    end
+
+    --[[!
+    @fqxn wxLuma.UI.ControlEvents.extend
+    @desc Adds widget-owned native surfaces and semantic names to the existing
+        subscription set. Repeated attachment never duplicates native observers.
+    @param table|nil tAdditionalTargets Additional native surfaces.
+    @param table|nil tAdditionalEvents Additional semantic event names.
+    !]]
+    function tEvents.extend(tAdditionalTargets, tAdditionalEvents)
+        for _, sName in ipairs(tAdditionalEvents or {}) do
+            assert(type(sName) == "string" and sName ~= "", "Invalid semantic event name.");
+            tSupported[sName] = true;
+        end
+
+        for _, oTarget in ipairs(tAdditionalTargets or {}) do
+            tEvents.bind(oTarget);
+        end
     end
 
     tEvents.bind(oComponent.Control);
@@ -287,6 +318,7 @@ function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
         tListeners = {};
     end;
 
+    _tAttached[oComponent] = tEvents;
     return tEvents;
 end
 

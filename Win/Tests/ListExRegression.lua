@@ -251,7 +251,7 @@ local function run()
     oSkin.destroy();
 
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    tWorkbench.Widgets.Tabs.setValue(6);
+    tWorkbench.Gallery.show("ListExUpdate", true);
     tWorkbench.Layout();
     _wx.wxYield();
     local oDemo = tWorkbench.Widgets.ListEx;

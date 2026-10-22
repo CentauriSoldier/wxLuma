@@ -74,6 +74,9 @@ function ControlSkin.load(pRoot)
     @param boolean|nil bVertical Whether to rotate artwork clockwise.
     !]]
     function oSkin.draw(oDC, sName, nX, nY, nWidth, nHeight, bVertical)
+        -- Narrow or transient zero-sized clients can clip a part completely.
+        -- Never pass its nonpositive dimensions to native bitmap allocation.
+        if ((nWidth and nWidth < 1) or (nHeight and nHeight < 1)) then return; end
         oDC:DrawBitmap(oSkin.getBitmap(sName, nWidth, nHeight, bVertical),
             math.floor(nX), math.floor(nY), true);
     end
@@ -95,6 +98,7 @@ function ControlSkin.load(pRoot)
     !]]
     function oSkin.drawOpaque(oDC, sName, nX, nY, nWidth, nHeight, bVertical)
         assert(not bDisposed, "Control skin is disposed.");
+        if ((nWidth and nWidth < 1) or (nHeight and nHeight < 1)) then return; end
         local sKey   = sName .. (bVertical and ":vertical"
             or ":horizontal") ..":" .. tostring(nWidth) ..":" .. tostring(nHeight);
         local tEntry = tOpaque[sKey];

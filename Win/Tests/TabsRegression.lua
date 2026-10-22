@@ -252,7 +252,8 @@ local function run()
     local tWorkbench = require("Tests.UI")(_wx.NULL);
     _wx.wxYield();
     local oWorkbenchTabs = tWorkbench.Widgets.Tabs;
-    check(#oWorkbenchTabs.Pages == 12 and #oWorkbenchTabs.getLayout().Entries == 12,
+    local nCategories = #tWorkbench.Gallery.Categories;
+    check(#oWorkbenchTabs.Pages == nCategories and #oWorkbenchTabs.getLayout().Entries == nCategories,
         "All workbench categories are visible without equal-width clipping.");
     local oDC = _wx.wxClientDC(oWorkbenchTabs.Control);
     oDC:SetFont(tWorkbench.Skin.Font);
@@ -264,8 +265,8 @@ local function run()
     tWorkbench.Frame:SetClientSize(_wx.wxSize(920, 780));
     tWorkbench.Layout();
     _wx.wxYield();
-    check(#oWorkbenchTabs.getLayout().Entries == 12, "All categories fit at minimum workbench size.");
-    oWorkbenchTabs.setValue(11);
+    check(#oWorkbenchTabs.getLayout().Entries == nCategories, "All categories fit at minimum workbench size.");
+    tWorkbench.Gallery.show("ExampleTabs", true);
     tWorkbench.Layout();
     local oExample = tWorkbench.Widgets.ExampleTabs;
     local oExamplePage = oExample.getPage(1);
@@ -275,14 +276,15 @@ local function run()
     oExample.setLayoutMode("scroll");
     oExample.setValue(4);
 
+    tWorkbench.Gallery.show("TabsRemove", true);
     click(tWorkbench.Widgets.TabsRemove.Control, 10, 10);
     _wx.wxYield();
-    oWorkbenchTabs.setValue(1);
+    tWorkbench.Gallery.show("Toggle", true);
     tWorkbench.Layout();
     click(tWorkbench.Widgets.Toggle.Control, 10, 10);
     click(tWorkbench.Widgets.Toggle.Control, 10, 10);
     check(tWorkbench.Widgets.ExampleTabs.isEnabled(), "Global enable switch skips disposed children of removed example pages.");
-    oWorkbenchTabs.setValue(11);
+    tWorkbench.Gallery.show("ExampleTabs", true);
     tWorkbench.Layout();
     -- Reproducible production header rendering, independent of OS screenshots.
     local oPreview = _wx.wxBitmap(820, 480);

@@ -1,4 +1,5 @@
 local _wx     = require("wx");
+local _Events = require("wxLuma.Core.ControlEvents");
 local _Object = require("wxLuma.Core.ControlObject");
 local _Window = require("wxLuma.Containers.Window");
 local _Skin   = require("wxLuma.Core.ControlSkin");
@@ -275,6 +276,30 @@ function TopLevelWindow.create(oParent, tOptions)
         if (oEvent:GetId() == nFrameID) then bFrameDestroyed = true; oWindow.dispose(); end
         oEvent:Skip();
     end);
+    --[[!
+    @fqxn wxLuma.UI.TopLevelWindow.isEnabled
+    @desc Reports whether this live native frame accepts interaction.
+    @ret boolean bEnabled Current frame availability.
+    !]]
+    function oWindow.isEnabled()
+        return not oWindow.Disposed and oFrame:IsEnabled();
+    end
+
+    --[[!
+    @fqxn wxLuma.UI.TopLevelWindow.setEnabled
+    @desc Changes frame availability, including its native child controls.
+    @param boolean bEnabled Whether interaction is enabled.
+    @ret table oWindow This public window.
+    !]]
+    function oWindow.setEnabled(bEnabled)
+        assert(type(bEnabled) == "boolean", "Enabled flag must be boolean.");
+        if (not oWindow.Disposed) then
+            oFrame:Enable(bEnabled);
+        end
+        return oWindow;
+    end
+
+    _Events.attach(oWindow, {oFrame});
     oFrame:Layout(); fLayout();
     return oWindow;
 end

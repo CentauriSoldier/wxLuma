@@ -1,5 +1,6 @@
 local _Containment = require("wxLuma.Core.ControlContainment");
 local _ControlObject = require("wxLuma.Core.ControlObject");
+local _Events = require("wxLuma.Core.ControlEvents");
 
 --[[!
 @fqxn wxLuma.UI.Window
@@ -317,7 +318,37 @@ function Window.create(oParent, tOptions)
         end
         jEvent:Skip();
     end);
+    --[[!
+    @fqxn wxLuma.UI.Window.isEnabled
+    @desc Reports availability of the decorated surface for event subscribers.
+    @ret boolean bEnabled Whether the live surface accepts input.
+    !]]
+    function oWindow.isEnabled()
+        return not bDisposed and oControl:IsEnabled();
+    end
+
+    --[[!
+    @fqxn wxLuma.UI.Window.setEnabled
+    @desc Changes native surface availability without changing its artwork cache.
+    @param boolean bEnabled Whether the surface accepts input.
+    @ret table oWindow This surface.
+    !]]
+    function oWindow.setEnabled(bEnabled)
+        assert(type(bEnabled) == "boolean", "Enabled flag must be boolean.");
+        if (not bDisposed) then
+            oControl:Enable(bEnabled);
+        end
+        return oWindow;
+    end
+
+    -- Keep public lifecycle state synchronized for shared native observers.
+    local fDestroy = oWindow.destroy;
+    oWindow.destroy = function()
+        fDestroy();
+        oWindow.Disposed = true;
+    end;
     _Containment.attach(oWindow, oControl, tOptions);
+    _Events.attach(oWindow);
     return oWindow;
 end
 return Window;

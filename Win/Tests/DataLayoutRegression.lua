@@ -440,13 +440,14 @@ local function run()
     oSkin.destroy();
 
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    tWorkbench.Widgets.Tabs.setValue(6);
+    tWorkbench.Gallery.show("Tree", true);
     tWorkbench.Layout();
     _wx.wxYield();
-    check(tWorkbench.Widgets.Tree.Control:IsShownOnScreen() and tWorkbench.Widgets.Table.Control:IsShownOnScreen(),
-        "Data category contains Tree and Table examples.");
+    check(tWorkbench.Widgets.Tree.Control:IsShownOnScreen(), "Trees category contains the Tree example.");
+    tWorkbench.Gallery.show("Table", true);
+    check(tWorkbench.Widgets.Table.Control:IsShownOnScreen(), "Lists/tables category contains the Table example.");
     check(#tWorkbench.Widgets.Table.getItems() == 1000, "Workbench table contains 1,000 rows.");
-    tWorkbench.Widgets.Tabs.setValue(5);
+    tWorkbench.Gallery.show("SplitContainer", true);
     _wx.wxYield();
     check(tWorkbench.Widgets.SplitContainer.Control:IsShownOnScreen(), "Containers category includes SplitContainer.");
     local oWorkbenchSplit = tWorkbench.Widgets.SplitContainer;

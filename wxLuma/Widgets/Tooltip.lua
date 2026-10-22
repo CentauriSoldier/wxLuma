@@ -1,5 +1,6 @@
 local _Containment   = require("wxLuma.Core.ControlContainment");
 local _ControlObject = require("wxLuma.Core.ControlObject");
+local _Events        = require("wxLuma.Core.ControlEvents");
 local _wx            = require("wx");
 local Tooltip        = {};
 local drawFrame      = require("wxLuma.Core.ControlDrawing").frame;
@@ -8,6 +9,7 @@ local drawFrame      = require("wxLuma.Core.ControlDrawing").frame;
 @fqxn wxLuma.UI.Tooltip.create
 @param wxWindow oTarget Hover/focus target; tooltip lifetime follows target.
 @param table tOptions Skin, Text; optional Delay (500 milliseconds), Enabled,
+    Automatic (true; false leaves show/hide under application control),
     Containment (ancestor window/component), ContainmentOverflow (hide/allow).
 @desc Skinned non-activating popup after hover delay or focus; hides on leave,
       press, key, focus loss, disable, target hiding or destruction.
@@ -139,13 +141,13 @@ function Tooltip.create(oTarget, tOptions)
         end
     end);
     oTarget:Connect(_wx.wxEVT_ENTER_WINDOW, function(jEvent)
-        if (not oComponent.Disposed) then
+        if (not oComponent.Disposed and tOptions.Automatic ~= false) then
             oTimer:Start(tOptions.Delay or 500, true);
         end;
         jEvent:Skip();
     end);
     oTarget:Connect(_wx.wxEVT_SET_FOCUS, function(jEvent)
-        oComponent.show();
+        if (tOptions.Automatic ~= false) then oComponent.show(); end
         jEvent:Skip();
     end);
     for _, nEvent in ipairs({
@@ -169,7 +171,17 @@ function Tooltip.create(oTarget, tOptions)
         end;
         jEvent:Skip();
     end);
+    --[[!
+    @fqxn wxLuma.UI.Tooltip.isEnabled
+    @desc Reports whether the live tooltip and its target allow interaction.
+    @ret boolean bEnabled Whether the tooltip is available.
+    !]]
+    function oComponent.isEnabled()
+        return not oComponent.Disposed and oComponent.Enabled and oTarget:IsEnabled();
+    end
+
     tContainment = _Containment.attach(oComponent, oTarget, tOptions);
+    _Events.attach(oComponent, {oTarget});
     tContainment.watch(function()
         if (oComponent.isShown()) then
             if (not oTarget:IsShownOnScreen() or not tContainment.place(oPopup)) then

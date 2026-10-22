@@ -237,7 +237,7 @@ function CircularProgress.create(oParent, tOptions)
 
     --[[!
     @fqxn wxLuma.UI.CircularProgress.setValue
-    @desc Clamps finite progress to the creation range. Effective changes redraw;
+    @desc Clamps finite progress to Min and the reserve-adjusted effective maximum. Effective changes redraw;
         notifications are opt-in and unchanged values remain silent.
     @param number nValue The requested progress.
     @param boolean|nil bNotify Emit OnChange(value, component) and valueChanged.
@@ -245,7 +245,7 @@ function CircularProgress.create(oParent, tOptions)
     !]]
     function oComponent.setValue(nValue, bNotify)
         assert(_finite(nValue), "Circular progress value must be finite.");
-        nValue = math.max(oComponent.Min, math.min(oComponent.Max, nValue));
+        nValue = math.max(oComponent.Min, math.min(oComponent.getEffectiveMax(), nValue));
 
         if (not oComponent.Disposed and nValue ~= oComponent.Value) then
             local nOldValue = oComponent.Value;

@@ -249,7 +249,7 @@ local function run()
         oAllReserved:delete();
         oComponent.setReserved(20);
         oComponent.setValue(110);
-        check(oComponent.getValue() == 110 and oComponent.isFull(), "over-effective current retained and saturated");
+        check(oComponent.getValue() == oComponent.getEffectiveMax() and oComponent.isFull(), "setting full caps at usable capacity");
         oComponent.setEnabled(false);
         local oDisabled = pixels(oComponent);
         oDisabled:delete();
@@ -396,7 +396,7 @@ local function run()
 
     oRealSkin.destroy();
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    tWorkbench.Widgets.Tabs.setValue(7);
+    tWorkbench.Gallery.show("OrbReserved", true);
     tWorkbench.Layout();
     _wx.wxYield();
     tWorkbench.Widgets.OrbReserved.setValue(25, true);
@@ -407,13 +407,12 @@ local function run()
 
     check(tWorkbench.Widgets.OrbReserved.Control:IsShownOnScreen()
         and not tWorkbench.Widgets.CircularPie.Control:IsShownOnScreen(), "orb page contains reserve controls only");
-    tWorkbench.Widgets.Tabs.setValue(3);
+    tWorkbench.Gallery.show("CircularPie", true);
     tWorkbench.Layout();
     _wx.wxYield();
     check(tWorkbench.Widgets.CircularPie.Control:IsShownOnScreen()
-        and tWorkbench.Widgets.CircularPie.Control:GetParent():GetId()
-            == tWorkbench.Widgets.CircularProgress.Control:GetParent():GetId(),
-        "solid pie option belongs beside circular meter");
+        and tWorkbench.Gallery.parent("CircularPie") == tWorkbench.Gallery.Cards.Progress.Actions,
+        "solid pie option belongs to the circular meter container");
     tWorkbench.Frame:Close();
     _wx.wxYield();
 end

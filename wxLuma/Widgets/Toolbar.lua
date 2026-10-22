@@ -15,9 +15,10 @@ local Toolbar      = {};
 @param wxWindow oParent Native owner.
 @param table tOptions Skin, optional Items ({Id,Text,Image,Kind,Selected,Enabled,
     Width,Tooltip}), Artwork (Toolbar), Enabled, OnActivate(id, component).
+@param string|nil sKind Internal component kind for a composed command strip.
 @ret table oComponent Standard surface/events plus mutable command APIs.
 !]]
-function Toolbar.create(oParent, tOptions)
+function Toolbar.create(oParent, tOptions, sKind)
     assert(tOptions and tOptions.Skin, "Toolbar requires Skin.");
     local tArt = _Artwork.create(tOptions.Skin, tOptions.Artwork or "Toolbar");
     local tItems, tRects, tOverflow = {}, {}, {};
@@ -65,7 +66,7 @@ function Toolbar.create(oParent, tOptions)
         error(vItems);
     end
     tItems = vItems;
-    local oComponent = _Surface.create(oParent, tOptions, "Toolbar");
+    local oComponent = _Surface.create(oParent, tOptions, sKind or "Toolbar");
     local tPolicy = _Containment.getPolicy(oComponent);
     local oHint = _wx.wxPopupWindow(oComponent.Control, _wx.wxBORDER_NONE);
     local oHintCanvas = _wx.wxPanel(oHint, _wx.wxID_ANY);

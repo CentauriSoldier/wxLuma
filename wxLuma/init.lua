@@ -66,6 +66,7 @@ local function load(pConfig)
         TopLevelWindow = TopLevelWindow,
         Path     = _pRoot,
         Config   = Config,
+        State    = require("wxLuma.State"),
     };
 
     return wxLuma;

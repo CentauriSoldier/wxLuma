@@ -263,13 +263,14 @@ local function run()
     end
 
     oSlider.handlePointer("up", nSliderWidth - 16, math.floor(nSliderHeight / 2));
-    check(oSlider.getValue() == 100 and not oSlider.Control:HasCapture(), "drag reaches endpoint and releases capture");
+    check(oSlider.getValue() == tWorkbench.Widgets.GlobeProgress.getEffectiveMax()
+        and not oSlider.Control:HasCapture(), "drag stops at usable endpoint and releases capture");
 
     for _, sKey in ipairs({"GlobeProgress", "RadialProgress", "IrisProgress"}) do
         local oMeter = tWorkbench.Widgets[sKey];
         check(oMeter.getSupersampling() == 2, "live demo uses lighter antialiasing");
         oMeter.setSupersampling(4, true);
-        check(oMeter.getSupersampling() == 4 and oMeter.getValue() == 100, "runtime quality preserves value");
+        check(oMeter.getSupersampling() == 4 and oMeter.getValue() == oMeter.getEffectiveMax(), "runtime quality preserves capped value");
         check(not pcall(oMeter.setSupersampling, 0), "invalid quality rejected");
     end
 

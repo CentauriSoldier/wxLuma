@@ -747,7 +747,18 @@ function TreeEx.create(oParent, tOptions)
     end);
     tEvents = _Events.attach(oTree, {oRows.Control}, {"itemsChanged", "itemAdded", "itemRemoved", "itemChanged",
         "cellChanged", "selectionChanged", "multiSelectChanged", "itemExpanded", "itemCollapsed", "itemActivated",
-        "checkChanged", "checkboxesChanged", "checkPropagationChanged"});
+        "checkChanged", "checkboxesChanged", "checkPropagationChanged", "itemHovered", "itemLeft"});
+
+    -- Row indices are transient; publish the stable node identity for audio
+    -- subscriptions on the tree rather than requiring callers to inspect Rows.
+    for _, sEvent in ipairs({"itemHovered", "itemLeft"}) do
+        oRows.on(sEvent, function(oSource, tEvent)
+            local tNode = tVisible[tEvent.Index];
+            if (tNode) then
+                tEvents.emit(sEvent, {Id = tNode.Id, Index = tEvent.Index});
+            end
+        end);
+    end
     tChecks = _Checks.attach(oTree, tEvents, tOptions, {
         keys = function()
             return _Selection.copy(tOrder);

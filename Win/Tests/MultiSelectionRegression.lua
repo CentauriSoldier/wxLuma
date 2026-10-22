@@ -261,7 +261,7 @@ local function run()
     local tWorkbench = require("Tests.UI")(_wx.NULL);
 
     for _, tPair in ipairs({{"List", "ListMultiSelect", 2}, {"Table", "TableMultiSelect", 6}, {"ListEx", "ListExMultiSelect", 6}}) do
-        tWorkbench.Widgets.Tabs.setValue(tPair[3]);
+        tWorkbench.Gallery.show(tPair[2], true);
         tWorkbench.Layout();
         _wx.wxYield();
         local oDemo = tWorkbench.Widgets[tPair[1]];

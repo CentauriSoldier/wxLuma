@@ -430,18 +430,20 @@ local function run()
     _wx.wxYield();
 
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    tWorkbench.Widgets.Tabs.setValue(8);
+    tWorkbench.Gallery.show("RadialMenuTarget", true);
     tWorkbench.Layout();
     _wx.wxYield();
     click(tWorkbench.Widgets.RadialMenuTarget.Control, 20, 20);
     check(tWorkbench.Widgets.RadialMenu.isOpen(), "Workbench programmatic radial button opens menu.");
     tWorkbench.Widgets.RadialMenu.activateItem("attack");
     check(tWorkbench.Widgets.MenuSelection.getValue() == "Selected: attack", "Workbench displays returned action path.");
+    tWorkbench.Gallery.show("ContextMenuTarget", true);
     local oDemoTarget = tWorkbench.Widgets.ContextMenuTarget.Control;
     local oDemoPoint = oDemoTarget:ClientToScreen(_wx.wxPoint(20, 20));
     contextEvent(oDemoTarget, oDemoPoint:GetX(), oDemoPoint:GetY());
     check(tWorkbench.Widgets.ContextMenu.isOpen(), "Workbench right-click attachment opens context menu.");
     tWorkbench.Widgets.ContextMenu.close();
+    tWorkbench.Gallery.show("RadialMenuTarget", true);
     tWorkbench.Widgets.RadialMenu.showAtObject(tWorkbench.Widgets.RadialMenuTarget);
     local tRadialLayout = tWorkbench.Widgets.RadialMenu.getLayout();
     local oPreviewContext = _Controls.contextMenu(tWorkbench.Frame, {Skin = tWorkbench.Skin, Items = {
@@ -450,6 +452,7 @@ local function run()
         {Id = "preview-build", Text = "Build", Items = {{Id = "preview-tower", Text = "Tower"}}},
         {Id = "preview-disabled", Text = "Unavailable", Enabled = false}
     }});
+    tWorkbench.Gallery.show("ContextMenuTarget", true);
     oPreviewContext.showAtObject(tWorkbench.Widgets.ContextMenuTarget);
     local tContextLayout = oPreviewContext.getLayout();
     local nPreviewWidth = tRadialLayout.Width + tContextLayout.Width + 96;

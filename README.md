@@ -7,6 +7,7 @@ The inner `wxLuma/` folder is the framework. `Win/` contains the Windows demo, t
 ## Contents
 
 - [Getting started](#getting-started)
+- [Object state](#object-state)
 - [Image configuration](#image-configuration)
 - [Repository layout](#repository-layout)
 - [Available components](#available-components)
@@ -20,6 +21,8 @@ The inner `wxLuma/` folder is the framework. `Win/` contains the Windows demo, t
 - [ContextMenu and RadialMenu](#contextmenu-and-radialmenu)
 - [Editors and dialogs](#editors-and-dialogs)
 - [Toolbar, StatusBar and ColorPicker](#toolbar-statusbar-and-colorpicker)
+- [Inspector controls](#inspector-controls)
+- [Additional editors and workspace controls](#additional-editors-and-workspace-controls)
 - [Historical measurements and export notes](#historical-measurements-and-export-notes)
 
 ## Getting started
@@ -38,10 +41,10 @@ local Controls = wxLuma.Controls;
 ```lua
 local loadwxLuma = require("wxLuma");
 local wxLuma = loadwxLuma();                    -- Included config.
-local wxLumaCustom = loadwxLuma("path/to/config.lua"); -- Custom config.
+local wxLumaCustom = loadwxLuma("path/to/wxLumaConfig.lua"); -- Custom config.
 ```
 
-A relative configuration-file path is relative to the caller's current working directory. An omitted path selects the framework's own `config.lua`, independently of that working directory. Each loader call returns its own `wxLuma` table, configuration table, and default-artwork wrappers; loading a custom configuration does not replace an earlier instance's image defaults. Widget implementations remain shared Lua modules.
+A relative configuration-file path is relative to the caller's current working directory. An omitted path selects the framework's own `wxLumaConfig.lua`, independently of that working directory. Each loader call returns its own `wxLuma` table, configuration table, and default-artwork wrappers; loading a custom configuration does not replace an earlier instance's image defaults. Widget implementations remain shared Lua modules.
 
 The loader loads configuration, control factories, and the window module. Its returned table contains:
 
@@ -76,9 +79,71 @@ wx.wxGetApp():MainLoop();
 
 The examples in the reference sections use `Controls = wxLuma.Controls`, an application-owned native `oParent`, and a shared `oSkin`. Methods use dot-call syntax unless a native wx object is being called.
 
+## Object state
+
+wxLuma can capture and restore **existing** object hierarchies without LuaEx or
+any serializer. `getObjectState()` returns a detached data table;
+`setObjectState(state)` applies it and returns the object plus an
+`{Applied = count, Skipped = count}` report. The existing `getState()` method
+continues to mean visual state, such as Normal, Hover or Pressed.
+
+```lua
+local oPanel = Controls.panel(oFrame, {Skin = oSkin});
+local oName = Controls.textfield(oPanel.Control, {Skin = oSkin, Value = "Ada"});
+oName.setStateId("displayName");
+
+local tSaved = oPanel.getObjectState();
+oName.setValue("Changed");
+local _, tReport = oPanel.setObjectState(tSaved);
+assert(oName.getValue() == "Ada");
+```
+
+The application creates all objects before loading. State restoration never
+calls constructors, creates missing controls, replaces item definitions or
+recreates event subscriptions. Matching children restore their saved state;
+missing/disposed children and type replacements skip their entire saved subtree.
+Extra live children remain unchanged. Property-grid rows, tree nodes and tab
+selections use their existing IDs; absent saved entries are skipped.
+
+**Assign stable state IDs to application objects that must match across sessions.**
+IDs must be unique among siblings. The root is supplied directly and does not
+need a matching ID. Generated IDs identify a single live instance only; they are
+not positional guesses and will not incorrectly match a different replacement.
+If an intermediate container is rebuilt, assign its stable ID too so its saved
+descendants can be matched. Native intermediate panels need no IDs.
+
+Native parenting discovers children automatically, including compound-control
+children. For logical ownership without native parenting, use
+`parent.addStateChild("stableChildId", existingChild)` and
+`parent.removeStateChild("stableChildId")`. These methods only manage state
+links; they do not reparent, create or destroy controls. Shared/cyclic ownership
+is rejected because saved containment must be a tree.
+
+Snapshots use a versioned, flat `Objects` array with child references. Both
+capture and restore walk iteratively, so there is no fixed child-depth limit or
+recursive traversal of the UI hierarchy. Memory remains a practical limit.
+Snapshots contain supported mutable public properties: values, enabled state,
+selection/checks, reserve and geometry settings, editor policies, captions and
+tree expansion. Application schemas, skins, native resources, focus/drag/popup
+state and callbacks remain runtime-owned. Missing objects are normal; malformed
+snapshots or invalid state for a matching object report errors. Failed applies
+attempt rollback through the same public setters. Value setters are silent;
+normal lifecycle events can still fire.
+
+`wxLuma.State.capture(object)` and `wxLuma.State.restore(object, state)` expose the
+same operations as module functions. Application-defined state can extend an
+exact object type with `wxLuma.State.register(typeName, adapter)`, where the
+adapter supplies `capture(object)`, `restore(object, data)` and optionally
+`validate(data)`. Adapter data must contain plain tables and finite scalar values.
+Adapters operate on existing objects; native handles and functions are rejected
+instead of being copied into saves.
+
+Encoding this table for disk is a separate application choice: JSON, LuaEx or
+another serializer can be used. wxLuma neither loads nor requires any of them.
+
 ## Image configuration
 
-The loader returned by `wxLuma/init.lua` loads `wxLuma/config.lua` by default. Edit its setting to choose the artwork package:
+The loader returned by `wxLuma/init.lua` loads `wxLuma/wxLumaConfig.lua` by default. Edit its setting to choose the artwork package:
 
 ```lua
 local Config = {
@@ -110,7 +175,7 @@ Repository/
 ├── LICENSE
 ├── wxLuma/                   Complete framework
 │   ├── init.lua              Loader returning the framework table
-│   ├── config.lua            Image package configuration
+│   ├── wxLumaConfig.lua      Custom package configuration
 │   ├── Controls.lua          Factory facade and shared helpers
 │   ├── Core/                 Shared object, event, rendering, and policy code
 │   ├── Containers/           Window, Panel, Tabs, Dialog, Scroll/Split containers
@@ -131,11 +196,12 @@ Repository/
 
 | Group | Factories on `wxLuma.Controls` |
 | --- | --- |
-| Input and actions | `checkbox`, `radio`, `slider`, `spinner`, `button`, `toggleButton`, `scrollbar`, `dropdown`, `textfield`, `numericField`, `colorPicker` |
-| Display and data | `label`, `image`, `list`, `listEx`, `tree`, `treeEx`, `table`, `tooltip` |
+| Input and actions | `checkbox`, `radio`, `slider`, `rangeSlider`, `knob`, `switch`, `spinner`, `button`, `toggleButton`, `scrollbar`, `dropdown`, `textfield`, `multilineText`, `numericField`, `dateTimePicker`, `colorPicker`, `searchField`, `comboBox`, `filePicker`, `folderPicker` |
+| Display and data | `label`, `image`, `led`, `list`, `listEx`, `tree`, `treeEx`, `table`, `tooltip`, `propertyGrid`, `notification`, `logViewer` |
+| Graphs and charts | `chart`, `lineChart`, `areaChart`, `barChart`, `scatterChart`, `pieChart`, `donutChart` |
 | Progress | `progress`, `circularProgress`, `globeProgress`, `radialProgress`, `irisProgress` |
-| Containers and dialogs | `panel`, `tabs`, `scrollContainer`, `splitContainer`, `dialog` |
-| Menus and tools | `contextMenu`, `radialMenu`, `toolbar`, `statusBar` |
+| Containers and dialogs | `panel`, `dockablePanel`, `tabs`, `scrollContainer`, `splitContainer`, `dialog`, `collapsiblePanel`, `accordion` |
+| Menus and tools | `contextMenu`, `radialMenu`, `toolbar`, `statusBar`, `menuBar`, `breadcrumb` |
 
 Shared helpers are `loadSkin`, `radioGroup`, `setDefaultContainmentOverflow`, and `getDefaultContainmentOverflow`. The decorated window surface is `wxLuma.Window.create`.
 
@@ -143,9 +209,39 @@ Instances use the framework's actual-storage/decoy/metatable pattern. Factories 
 
 ## Windows demo and tests
 
-Run `Win/test.exe` for the example window demonstrating all twelve categories of controls. Keep `Win/` beside `wxLuma/`, with the runtime DLLs under `Win/Bin/`. The launcher finds `Win/init.lua` from its executable directory; the loader searches upward for the framework and locally for `Tests.UI`. The launcher has been smoke-tested from an unrelated working directory.
+Run `Win/test.exe` for the control gallery. Thirteen tabs group related objects:
+Buttons & choices, Text & numbers, Progress meters, Labels & images, Layout
+containers, Lists & tables, Orb meters, Menus & commands, Dialogs & paths,
+Tools & status, Tabs & navigation, Trees, and Properties & color.
 
-Live resizing is supported. Close the window or press Escape to exit; Escape first dismisses an open dropdown or cancels a panel/split-container drag. Samples use isolated values, without original application startup, databases, mods, or preferences.
+Each control type has one bordered section with a heading, description,
+interaction guidance, API usage example and live examples. Related instances
+and variants share that section: radio choices stay together, meters can be
+compared together, and editable/disabled/read-only states sit beside their type.
+Actions that modify the examples stay inside the same section. Categories scroll vertically;
+use the wheel, scrollbar or focused page-navigation keys to reach later examples.
+Documentation wraps and examples retain usable bounds when the window resizes.
+The global enabled-state example leaves category navigation and scrolling usable.
+
+Keep `Win/` and `Sound/` beside `wxLuma/`, with the runtime DLLs under `Win/Bin/`.
+The launcher finds `Win/init.lua` from its executable directory; the loader
+searches upward for the framework and locally for `Tests.UI`. The launcher has
+been smoke-tested from an unrelated working directory.
+
+Live resizing is supported. Close the window or press Escape outside a text
+editor to exit; Escape first dismisses an open dropdown/combo or cancels a
+panel/split-container drag. Text editors retain their own Escape behavior.
+Samples use isolated values, without original application startup, databases,
+mods, or preferences.
+
+`Win/Tests/DemoCatalog.lua` defines category membership and each example's
+documentation. `DemoGallery.lua` creates the documented containers and final
+native parents before `UI.lua` constructs samples. It also owns responsive
+layout and scrolling; the framework widgets remain unchanged. The returned demo
+object exposes `Gallery.show(widgetKey, true)` to select a category and reveal
+an example/action, and `Gallery.getCategoryIndex(key)` for named navigation.
+Regression fixtures use these helpers instead of assuming a fixed tab index or
+shared page coordinates.
 
 From the repository root in PowerShell:
 
@@ -153,7 +249,10 @@ From the repository root in PowerShell:
 & .\Win\test.exe --smoke
 ```
 
-The automatic check starts the workbench, changes tabs/list selection, resizes the live panel, closes, and collects garbage. Success writes `Win/smoke-result.txt`. Startup errors display a dialog and append to `Win/test-error.log`.
+The automatic check starts the gallery, navigates to named examples, changes
+list/editor/property values, resizes the live panel, closes, and collects
+garbage. Success writes `Win/smoke-result.txt`. Startup errors display a dialog
+and append to `Win/test-error.log`.
 
 The runtime package contains 18 DLLs: the Lua/wxLua/wxWidgets dependency closure plus three app-local Microsoft C/C++ runtime DLLs. Windows supplies system DLLs and the Universal C Runtime. The demo does not use WebView or media features. The native host is Windows x64; no clean second-workstation validation is claimed.
 
@@ -184,6 +283,42 @@ During the layout/configuration update on October 20, 2026, all 78 Lua files pas
 Historical copy/runtime hash records and validation notes remain under `Win/Source/`. They describe the original export; old counts, names, paths, and hashes must not be treated as a manifest of this reorganized tree. Historical benchmark procedures and numbers are retained below. The referenced baseline `Backups/` trees are absent from this checkout, so old-versus-new comparisons need those snapshots restored before reproduction. This documentation consolidation did not rerun benchmarks.
 
 ## Skinning controls
+
+### Interaction events for application audio
+
+Controls expose `on`/`off` subscriptions for `pointerEnter`, `pointerLeave`,
+`leftClick`, `rightClick`, and `middleClick`. Subscribe to these existing events
+to trigger application-owned audio. wxLuma does not load or play sound files.
+Listeners receive `(publicComponent, event)`; `event.Source` is that same object.
+Native editor surfaces in Spinner, TextField and NumericField are included.
+Window, TopLevelWindow and Tooltip also expose these subscriptions; Tooltip
+observes its target as well as its popup.
+
+```lua
+oButton.on("pointerEnter", function(oSource, tEvent)
+    -- Trigger the application's hover sound here.
+end);
+oButton.on("leftClick", function(oSource, tEvent)
+    -- Trigger the application's mouse-click sound here.
+end);
+```
+
+These pointer events observe native input; keyboard activation retains each
+widget's existing action/value events and callbacks. Check `oSource.isEnabled()`
+when an audio policy should ignore disabled input. Use `off(event, callback)` to
+remove one subscription, or `off(event)` to remove all listeners for that event.
+Repeated internal attachment preserves listeners and binds each native surface
+only once. Child components keep their own event ownership.
+
+For item feedback, List/ListEx expose `itemHovered`/`itemLeft` with `Index`;
+TreeEx exposes them with stable `Id` and visible `Index`. Repeated motion over
+the same row does not repeat these transitions. Tabs, Toolbar and menus retain
+their existing item hover/leave and activation events.
+
+`Win/Tests/RunEventHooks.ps1` syntax-checks the Lua files and runs native
+event, inspector, gallery and object-state regressions using the bundled Windows runtime. Event coverage includes every factory,
+native editors, exact-once delivery, listener removal, row/node hover transitions,
+button activation and disposal. It does not play audio or write preview files.
 
 New visual controls must accept the shared `Skin` object. When a control needs artwork that does not yet exist, add named PNG assets under `Images/Controls` and exercise them in the workbench. Colour options remain available where useful.
 
@@ -242,10 +377,20 @@ The Orb meters workbench category demonstrates both objects with runtime directi
 
 `Reserved` defaults to `0` and is an amount in the same units as `Value`.
 It must be finite and within `0 .. Max - Min`. All controls expose
-`getReserved()`, `setReserved(amount, notify)`, `getEffectiveMax()` and `isFull()`.
-Effective maximum is `Max - Reserved`. Changing reserve preserves current value;
-rendering saturates at effective maximum. An entirely reserved range displays
-only reserve and has no usable capacity. Invalid setters leave state unchanged.
+`getReserved()`, `setReserved(amount, notify)`, `getMax()`, `getEffectiveMax()` and `isFull()`.
+`getMax()` returns the configured total maximum; `getEffectiveMax()` returns the
+usable maximum after reserve is deducted. For example, Max 100 with Reserved 25
+returns 100 and 75 respectively.
+Effective maximum is `Max - Reserved`. Creation and `setValue()` clamp the stored
+value to `[Min, getEffectiveMax()]`; setting full with `setValue(Max)` stops there.
+Increasing reserve trims any current value above that limit. Decreasing reserve
+does not restore previously trimmed value. An entirely reserved range stores
+`Min` and displays only reserve. Invalid setters leave state unchanged.
+
+`setReserved(amount, true)` commits reserve, any trimmed value, and dependent
+rendering before callbacks. If current changed, it invokes `OnChange` and emits
+`valueChanged`, followed by `reservedChanged`. Silent calls update both fields
+without notifications; repeated effective values do not emit change events.
 
 Current, empty track, and reserved capacity are separate regions. Current fills
 the usable path while skipping reserve; they never overlap. Geometric fractions
@@ -269,7 +414,8 @@ An explicit angle or direction remains independent of normal geometry changes.
 Changed-only, opt-in events: `reservedChanged`, `reserveOriginChanged`,
 `reserveDirectionChanged`, `reserveStartAngleChanged`. Events include the new
 property and `Old<Property>`; reservedChanged also supplies `EffectiveMax`.
-These are notifications, not value changes; reserving does not call OnChange.
+Reserve geometry changes do not change current. Changing the reserved amount
+also calls `OnChange` when it trims current and notification was requested.
 
 Each material prefix adds `Reserve Normal` and `Reserve Disabled` artwork.
 The included reserve is purple with diagonal detail; each object's Skin/Artwork
@@ -1109,6 +1255,637 @@ Change `Skin` at object creation, and use `Artwork` to select a matching alterna
 material prefix. Do not mutate or delete borrowed Skin bitmaps. New components own
 only their decoded/scaled application images, palette colors and popup resources.
 
+
+## Inspector controls
+
+All inspector controls use the shared `Skin`, dot-call methods, optional silent
+setters, containment policy, `on`/`off` events and repeat-safe `destroy` convention.
+The application owns the shared skin; components own their popup/editor resources.
+The demo plays `Sound/Hover.wav` and `Sound/Click.wav` through asynchronous
+application-owned wxSound objects. Left/right sounds begin on mouse-down.
+
+### SearchField and editable ComboBox
+
+```lua
+local oSearch = Controls.searchField(oParent, {
+    Skin = oSkin, Hint = "Search objects", Debounce = 180,
+    OnSearch = function(sText, oSource)
+        -- Apply the query to application data here.
+    end,
+});
+local oCombo = Controls.comboBox(oParent, {
+    Skin = oSkin, Items = {"Balanced", "Cautious", "Fast"}, Value = "Custom profile", AutoComplete = true,
+    OnChange = function(sValue, oSource)
+        -- The value remains text even when it matches a suggestion.
+    end,
+});
+```
+
+Both expose `TextControl`, `getValue()` and `setValue(text, notify)` with native
+selection/clipboard support, plus `Hint`, `ReadOnly`, `MaxLength` and `Enabled`
+options. Frame, text colors, focus, action icons and the magnifier use skin PNGs.
+
+SearchField has `search()` and `clear()`. `Debounce` is a nonnegative integer in
+milliseconds, default zero. Enter searches immediately; Escape or the clear
+image clears nonempty text and searches the empty query. `searched` carries
+`Value`; `cleared` follows an effective clear. `OnChange` reports text edits;
+`OnSearch` reports searches. A silent binding update, disabling or destruction
+cancels a pending debounce request.
+
+ComboBox has `getItems()`, `setItems(strings, notify)`, `getSelection()`,
+`setSelection(index, notify)`, `open()`, `close(commit, focus)` and `isOpen()`.
+Selection is the first exact text match, or zero; selecting zero clears text.
+Replacing suggestions preserves free text. `Rows` defaults to eight. Down/F4
+opens; list arrows preview, Enter/click commits, Escape cancels, and Tab commits
+then traverses focus. Outside activation, hiding and disabling cancel previews.
+`AutoComplete` defaults to true: native typing opens suggestions and highlights
+the first case-insensitive prefix match while retaining editor focus, caret and
+typed text. Arrows move the preview, Enter/click commits, and Escape cancels it.
+Empty/unmatched text dismisses an automatic preview. Set `AutoComplete = false`
+for manual opening, or change the policy through `getAutoComplete()` and
+`setAutoComplete(flag)`. Programmatic value setters do not open suggestions.
+It exposes owned `List` and `Popup`, forwarding item hover and mouse events.
+`selectionChanged` carries `Index`, `Value` and `OldValue`; `itemsChanged`,
+`opened` and `closed` are also available; `opened.Automatic` identifies a
+typing-driven preview. Suggestions do not replace text until committed.
+
+### FilePicker and FolderPicker
+
+```lua
+local oFile = Controls.filePicker(oParent, {
+    Skin = oSkin, Directory = wxLuma.Path, Hint = "Choose a file",
+    OnChange = function(sPath, oSource) end,
+});
+local oFolder = Controls.folderPicker(oParent, {Skin = oSkin, Directory = wxLuma.Path});
+oFile.open();
+```
+
+The browse image opens a modeless browser made from wxLuma editors, buttons,
+ListEx and Dialog. Its client is skinned; title chrome follows the existing
+Dialog convention. It lists folders before files, with Up navigation and direct
+directory entry. Double-clicking a folder enters it; double-clicking a file
+selects it. FolderPicker lists directories and accepts the selected folder or
+the current directory. Hidden entries are omitted. Browsing creates no files.
+
+`filePicker` also accepts `Mode = "file"` or `"folder"`; `folderPicker` fixes the
+mode to folder. `Directory` sets the starting location when the current text
+does not name an existing path; its default is the process working directory.
+`getValue()`/`setValue(path, notify)` edit the path text. Browser OK requires an
+existing item and commits an absolute path; cancellation preserves the text.
+Manually typed path text remains editable and is not implicitly validated.
+
+Use `open()`, `close(commit)`, `isOpen()`, `navigate(directory)` and
+`getDirectory()`. Failed navigation preserves the old listing and shows an inline
+error. Events include `opened`, `closed` (`Result`, `Value`), `directoryChanged`
+(`Path`, `OldPath`), `navigationFailed` and `validationFailed` (`Reason`, `Path`).
+The owned `Browser`, `BrowserList`, `DirectoryField`, `NameField` and `UpButton`
+are exposed for application customization; their lifetimes belong to the picker.
+
+### MenuBar
+
+```lua
+local oMenus = Controls.menuBar(oParent, {
+    Skin = oSkin,
+    Menus = {
+        {Id = "file", Text = "File", Width = 88, Items = {
+            {Id = "open", Text = "Open"},
+            {Id = "recent", Text = "Recent", Items = {{Id = "sample", Text = "Sample"}}},
+        }},
+    },
+    OnSelect = function(tSelection, oSource)
+        -- tSelection.MenuId identifies the heading; Id identifies its command.
+    end,
+});
+```
+
+Headings accept `Id`, `Text`, `Width`, `Image`, `Enabled` and nested `Items` in
+the existing ContextMenu descriptor format. `getMenus()` returns independent
+copies; `setMenus(menus, notify)` replaces the complete menu set after validation.
+`getMenu(id)` returns the owned ContextMenu for normal item mutation APIs.
+`open(id)`, `close()` and `isOpen()` control popup state. Toolbar layout and
+overflow behavior keep headings accessible in narrow strips. Standard array
+methods operate on menu descriptors through the same replacement path.
+
+F10 on the native parent focuses the visible strip. Left/Right traverse headings;
+Enter/Down opens. At popup root, Left/Right switch headings while Right on a
+submenu enters it. Escape backs out of nested pages and then restores strip
+focus. Hovering another heading switches an open menu. `command` carries the
+ContextMenu selection plus `MenuId`; `menuOpened` and `menuClosed` identify the
+heading. Application shortcuts can be handled by the host's accelerator system.
+
+### PropertyGrid
+
+```lua
+local oProperties = Controls.propertyGrid(oParent, {
+    Skin = oSkin, LabelWidth = 150, RowHeight = 42,
+    Properties = {
+        {Id = "general", Text = "General", Type = "category"},
+        {Id = "name", Text = "Name", Value = "Sample"},
+        {Id = "enabled", Text = "Enabled", Type = "boolean", Value = true},
+        {Id = "weight", Text = "Weight", Type = "number", Min = 0, Max = 10,
+            Step = 0.1, Precision = 2, Value = 1.5},
+        {Id = "profile", Text = "Profile", Type = "choice", Items = {"A", "B"}, Value = "B"},
+        {Id = "tint", Text = "Tint", Type = "color", Value = {R = 90, G = 180, B = 210}},
+        {Id = "source", Text = "Source", Type = "file"},
+        {Id = "output", Text = "Output", Type = "folder"},
+        {Id = "id", Text = "Identifier", Value = "sample-001", ReadOnly = true},
+    },
+    OnChange = function(sId, vValue, oSource) end,
+});
+oProperties.setValue("weight", 2.5, true);
+```
+
+`Type` defaults to `text`. Categories have no value/editor. Other defaults are
+empty text/path, false, the numeric minimum, the first choice, or opaque white.
+Numeric policy follows NumericField, including precision normalization; choices
+must match a supplied string. Property IDs are unique and stable. ReadOnly
+disables user editing while allowing programmatic binding updates.
+
+`getValue(id)` returns one typed value; omitting the ID returns a value map.
+`setValue(id, value, notify)` validates before mutation and notifies only for an
+effective normalized change. `getProperties()` copies descriptors/current values;
+RGBA and Items tables do not alias internal state. `getEditor(id)` exposes the
+owned editor for focus/customization; update bindings through the grid's setter.
+`setReadOnly(id, flag)` changes row policy. `propertyChanged` carries `Id`, `Value`
+and `OldValue`; `readOnlyChanged` carries `Id` and `ReadOnly`. Pointer notifications
+from owned editors include `Id` and `Child`; consumers can check `Child.isEnabled()`.
+The grid owns its `Scroll` container and all editors.
+
+### CollapsiblePanel and Accordion
+
+```lua
+local oDetails = Controls.collapsiblePanel(oParent, {
+    Skin = oSkin, Text = "Details", Expanded = true, HeaderHeight = 36, ContentHeight = 140,
+});
+local oAccordion = Controls.accordion(oParent, {
+    Skin = oSkin, Exclusive = true,
+    Sections = {
+        {Id = "appearance", Text = "Appearance", Height = 140, Expanded = true},
+        {Id = "behavior", Text = "Behavior", Height = 100},
+    },
+    OnChange = function(sId, bExpanded, oSource) end,
+});
+local oSection = oAccordion.getSection("appearance");
+-- Parent application controls to oDetails.Content or oSection.Content.
+```
+
+CollapsiblePanel exposes `isExpanded()`, `setExpanded(flag, notify)`, `toggle()`
+and `getBestHeight()`. `getValue`/`setValue` alias expansion. Header click,
+Enter/Space toggle; Left collapses and Right expands. Content is hidden, preserving
+child state. Collapse returns focus from a descendant to the header. The caller
+owns outer layout and can use `getBestHeight()` when handling `expandedChanged`
+or `OnChange(expanded, component)`.
+
+Accordion manages its own section layout and scrolling. `Exclusive` defaults to
+true and keeps at most one section expanded; false allows several. If several
+sections request initial expansion in exclusive mode, the first wins. Use
+`getSection(id)`, `getExpanded()` (ordered ID array) and
+`setExpanded(id, flag, notify)`. `expandedChanged` and `OnChange` report each
+effective section transition, including siblings collapsed by exclusivity.
+`Sections` and `Scroll` expose owned objects. Application children retain their
+own event ownership and native parent lifetime.
+
+### Inspector artwork and verification
+
+All files live under `wxLuma/Images/Controls/` with names
+`Control <prefix> <part>.png`. Replace the files in a custom skin or select an
+alternate `Artwork` prefix with the same parts. State lists below mean
+Normal/Hover/Pressed/Disabled unless stated otherwise.
+
+| Prefix | Parts |
+| --- | --- |
+| Search Field | Surface states; Magnifier states; Clear states; Editor Normal; Text Normal/Disabled; Focus |
+| Combo Box | Surface states; Arrow states; Editor Normal; Text Normal/Disabled; Focus |
+| File Picker | Surface states; File states; Folder states; Browse states; Editor Normal; Text Normal/Disabled; Focus |
+| Property Grid | Surface Normal/Disabled; Editor states; Editor Fill; Arrow states; Row; Category; Separator; Text Normal/Disabled; Focus |
+| Property Grid Editor | Surface states; Editor Normal; Text Normal/Disabled; Focus |
+| Collapsible Panel | Surface Normal/Disabled; Header states; Open states; Closed states; Text Normal/Disabled; Focus |
+| Accordion | Surface Normal/Disabled; Text Normal/Disabled; Focus |
+| Menu Bar | Same parts as Toolbar, using the Menu Bar prefix |
+
+The magnifier is an alpha PNG, not a text glyph or fixed native search icon.
+Text/editor palette colors are sampled from named materials. Composed controls
+also use the existing List/ListEx, Numeric Field, Checkbox, Color Picker, Dialog,
+scrollbar and Menu artwork families. A custom PropertyGrid `Artwork` prefix uses
+`<prefix> Editor` for its text editor family. Accordion accepts `SectionArtwork`
+for its disclosure panels; MenuBar accepts `MenuArtwork` for its command popups.
+Focus images for editors/disclosure headers have transparent interiors.
+
+The included images can be rebuilt with
+`Win/Source/GenerateInspectorArtwork.ps1`. It uses the existing palette and PNG
+families and draws the new magnifier, clear, file, folder and dropdown glyphs.
+
+Run the native regressions and syntax checks from the project root:
+
+```powershell
+.\Win\Tests\RunEventHooks.ps1
+```
+
+The runner loads the packaged Lua/wx runtime, executes EventHooksRegression,
+InspectorRegression, DemoGalleryRegression, StateRegression and AdditionalControlsRegression, and syntax-loads every Lua source. Inspector coverage
+includes actual timer delivery, native text events, combo commit/cancel,
+filesystem browsing/validation/cancel, menu descriptors, typed property binding,
+disclosure state, disabled input, artwork states and repeat-safe disposal.
+Gallery coverage checks category membership, per-type documentation and native
+parenting, nonoverlapping bounds at normal/minimum/wide sizes, scroll reachability,
+browse/suggestion/menu popups, nested tab actions, enabled-state policy and audio.
+State coverage includes 6,000 child tiers, partial reconstruction with a missing
+4,500-node tail, stable-ID matching, missing grid rows/tree nodes, type replacement,
+custom adapters, rollback, and a complete gallery state round trip without LuaEx.
+
+## Additional editors and workspace controls
+
+These factories use the existing shared Skin, actual/decoy object model,
+pointer/keyboard/audio-event subscriptions, enabled-state handling and
+`getObjectState()` / `setObjectState()` support. Value setters are silent unless
+`notify` is true. Native popup hosts and timers are owned and released by their
+control. LuaEx is not required or loaded.
+
+| Factory | Creation options beyond Skin | State and interaction |
+| --- | --- | --- |
+| `multilineText` | `Value`, `ReadOnly = false`, `Wrap = true`, `Hint` | Text includes newlines. Enter inserts a newline; native clipboard, selection, undo and scroll work normally. `isReadOnly()` / `setReadOnly(flag, notify)` control editing. Wrap is fixed at creation. |
+| `rangeSlider` | `Min = 0`, `Max = 100`, `Step = 1`, `Value = {Low, High}` | Ordered endpoint copies from `getValue()`. Setters validate, clamp and snap. Handles never cross. Space chooses the keyboard handle; arrows/Page/Home/End move it. Escape cancels an active drag. `get/setRange`, `get/setStep` are available. |
+| `notification` | `Value`, `Severity = 'info'`, `Duration = 3000` | `show(text, severity, milliseconds)` reuses the same inline control and restarts one timer. Zero duration persists. `dismiss(reason)` and close/Escape hide it. `dismissed` reports timeout/close/keyboard/application. Value, severity and duration have get/set APIs; visibility/timer progress are transient. |
+| `dateTimePicker` | `Mode = 'date'`, `Value`, optional ISO `Min`/`Max`, `ReadOnly` | Date is `YYYY-MM-DD`, time is 24-hour `HH:MM`, datetime is `YYYY-MM-DD HH:MM`. Enter/focus loss commits valid text; invalid text restores the last accepted value and emits `invalidInput`. F4/icon opens a skinned calendar/time popup; Escape closes or restores an edit. `get/setRange`, `is/setReadOnly`, `open`, `close`, `isOpen` are available. Mode is fixed at creation. |
+| `breadcrumb` | `Items = {{Id, Text, Image?}, ...}`, optional `Value` | Selects an existing stable ID, with independent `getItems()` / `getPath()` copies. Choosing an ancestor retains deeper path definitions. Arrows/Home/End navigate; a narrow bar reveals the selection and offers a leading back action. Missing saved selection IDs are skipped on restore. |
+| `dockablePanel` | `Text`, `Side = 'fill'`, `Extent = 220` | `Content` keeps application children intact. Drag the header to float and release near an owner edge to dock. Header action/Enter/Space toggles floating; Escape docks. `dock(side, notify)`, `float(x, y, notify)`, `isFloating()`, `get/setDockState()` reuse one floating host allocated at creation. Sibling workspace layout remains application-owned. |
+| `knob` | `Min = 0`, `Max = 100`, `Value = Min`, `Rate = 1`, `Continuity = 'none'` | Drag up/down, wheel, arrows/Page/Home/End. `get/setValue`, `get/setRange`, `get/setRate`, `get/setContinuity`, `get/setMotionDirection`, `increase`, `decrease`, `adjust`, `isAtStart`, `isAtEnd`. Escape cancels an active drag. |
+
+The knob follows the logical behavior of LuaEx's Potentiometer while retaining
+wxLuma's value/notification conventions:
+
+- `none` clamps at the endpoints.
+- `revolve` uses the inclusive period `Max - Min + 1`, independent of Rate:
+  `0..100` with requested value `120` becomes `19`. Fractional values in the final
+  one-unit seam clamp to Max, matching the reference implementation.
+- `alternate` reflects overshoot and reverses logical direction for each crossed
+  boundary. Reaching an exact endpoint retains direction until it is crossed.
+- `increase(multiplier, notify)` follows logical direction;
+  `decrease(multiplier, notify)` opposes it. `adjust(amount, notify)` adds an
+  absolute signed delta. An omitted multiplier is one; explicit zero does nothing.
+- `MotionDirection` is `1` for ascending and `-1` for descending; descending is
+  valid only in alternate mode. Snapshots preserve bounds, rate, continuity,
+  direction and value. Numeric input and representable periods must be finite.
+
+```lua
+local oDial = Controls.knob(oParent, {
+    Skin = oSkin, Min = 0, Max = 100, Value = 95, Rate = 10,
+    Continuity = "alternate",
+});
+oDial.increase();       -- 95, now descending after reflecting overshoot.
+oDial.increase();       -- 85.
+local tSaved = oDial.getObjectState();
+
+local oRange = Controls.rangeSlider(oParent, {
+    Skin = oSkin, Min = 0, Max = 100, Step = 1,
+    Value = {Low = 20, High = 80},
+});
+local oNotice = Controls.notification(oParent, {Skin = oSkin});
+oNotice.layout(20, 20, 480, 60);
+oNotice.show("Settings saved", "success", 3000);
+```
+
+Artwork prefixes are `Multiline Text`, `Range Slider`, `Notification`,
+`Date Time Picker`, `Breadcrumb`, `Dockable Panel` and `Knob`. Each has replaceable
+surface states and text materials. Specialized parts include Range Slider
+Track/Fill/Thumb; Notification severity Surface/Icon and Close; Date Time Picker
+Calendar/Day/Back/Next/Icon; Breadcrumb Item/Separator/Back; Dockable Panel
+Header/Grip/Action/Content; and Knob Face/Needle. Each Knob Needle state is a
+transparent square image with its pivot at the center and its tip pointing right.
+The skin defines its length, thickness, shape, color and shading. Supplied needle
+PNGs are 384 by 384 pixels. The image rotates clockwise through the dial's
+135-to-405-degree sweep, scales with the face and preserves alpha. The face and
+needle are rendered at triple resolution and filtered down for
+antialiasing. The resulting bitmap is cached until angle, size or visual state changes;
+value text and focus artwork remain at native resolution.
+Rebuild the supplied PNGs with `Win/Source/GenerateInspectorArtwork.ps1`.
+
+The gallery groups the three dial modes and three date/time modes together.
+Other new types have their own documented section in their related categories.
+AdditionalControlsRegression covers native text/events, interval ordering,
+potentiometer reference scenarios, Gregorian validation, real popup painting,
+timer replacement/disposal, native docking gestures and child identity.
+
+### Switch / lever and LED
+
+`Controls.switch(parent, options)` returns a binary lever. `Value` defaults to
+`false`; `Orientation` defaults to `"horizontal"`; `Reversed` defaults to `false`.
+`Text` defaults to an empty string; optional captions are drawn upright using
+the skin font. Supplied switch PNGs contain no text.
+Standard on points right horizontally and up vertically. Reversal swaps the
+physical endpoints while preserving the boolean value. Click, Enter or Space
+toggles on release; directional arrows select their corresponding endpoint.
+
+`get/setOrientation`, `get/setReversed` and `get/setValue` are available.
+Changing orientation or reversal cancels any pending press and automatically
+selects matching artwork. The application only manages the layout bounds.
+`setValue(value, true)` emits `valueChanged` and calls `OnChange(value, component)`
+after an actual change. Omitted notification is silent.
+`setOrientation(value, true)` and `setReversed(value, true)` emit changed-only
+`orientationChanged` and `reversedChanged` respectively.
+
+```lua
+local oSwitch = Controls.switch(oParent, {
+    Skin = oSkin, Orientation = "horizontal", Value = true,
+});
+oSwitch.layout(20, 20, 140, 140);
+oSwitch.setOrientation("vertical"); -- Automatically selects vertical skins.
+oSwitch.setReversed(true);          -- On now points down; Value stays true.
+
+local oLED = Controls.led(oParent, {
+    Skin = oSkin, Value = true, Color = {R = 80, G = 220, B = 140},
+    Size = 64, Brightness = 1, Glow = true, Glass = false,
+});
+oLED.layout(180, 20, 120, 120);
+oSwitch.on("valueChanged", function(oSender, tEvent)
+    oLED.setValue(tEvent.Value);
+end);
+```
+
+LED settings have matching `get/setValue`, `get/setColor`, `get/setSize`,
+`get/setBrightness`, `get/setGlow`, `get/setGlowRadius` and `get/setGlass` methods. Defaults are off,
+green `{R = 80, G = 220, B = 140, A = 255}`, 48 pixels, brightness 1, glow on and
+glass off. Brightness is finite `0..1`; size is an integer `1..512`. Color accepts
+integer RGB and optional alpha channels `0..255`, and getters return copies.
+Size is the nominal bezel/lens artwork diameter; the control reserves an outer
+glow margin and reduces the diameter to fit small layout bounds.
+`GlowRadius` is an optional finite radius from the center, in pixels (`0..512`,
+fractions allowed). Omit it or call `setGlowRadius(nil)` for the original automatic
+radius of `0.75 * rendered Size`. Zero suppresses the halo while retaining `Glow`.
+An explicit radius fits within the control bounds and never shrinks the lens;
+give the control sufficient layout space for a large halo. Radius changes
+invalidate only glow bitmaps and emit `settingChanged` when requested. Both
+explicit radius and automatic sizing round-trip through state. Off retains a
+dim lens; disabled dims the emitted light. Pointer input emits shared events
+without changing the LED value. Setters accept an optional notification flag;
+Value emits `valueChanged` and calls `OnChange`, while other settings emit
+`settingChanged` with `Property`, `Value` and `OldValue`.
+
+Switch artwork names are `Switch Horizontal Standard On Normal`, etc.: each
+horizontal/vertical, standard/reversed, on/off combination has Normal, Hover,
+Pressed and Disabled PNGs. Set `Artwork` to a different family prefix to replace
+the whole family while keeping automatic selection.
+`Switch Surface Normal/Hover/Pressed/Disabled`, `Switch Text Normal/Disabled`
+and `Switch Focus` complete the switch skin. Text materials supply caption
+colors; captions use `Skin.Font` and remain upright in either orientation.
+Surface artwork fills the control bounds; the shared `Background` callback can
+override that surface. Focus is an image rather than a hardcoded native border.
+The same `Artwork` prefix selects these parts along with the lever variants.
+
+LED artwork consists of
+`LED Surface Normal`, `LED Surface Disabled`, `LED Bezel`, `LED Lens`, `LED Glow`
+and `LED Glass`. Lens and glow use neutral shaded images with alpha; runtime
+color and brightness tint them while preserving their shape. Supplied LED layer
+PNGs are 384 by 384 pixels with antialiased edges and a continuous radial glow.
+Neutral artwork is filtered to the rendered diameter once; byte lookup tables
+and bulk image updates tint it without individual Lua-to-wx pixel calls.
+Brightness/color changes reuse the filtered shade and alpha data; size changes
+reuse decoded source artwork. Glow/glass visibility changes retain light caches.
+Finished bitmaps are cached between paints; replaced resources are released,
+and destruction releases all owned images and bitmaps.
+LED also accepts `Artwork` and the shared `Background` callback.
+
+Both objects support the shared event/audio hooks and state save/load. Snapshots
+restore switch orientation/reversal/value and all LED settings onto existing
+objects. The demo has one section for all four switch arrangements, with runtime
+orientation/reversal actions, and one LED section with lit/off/glass examples and
+editable power, glow, glass, brightness, size, color and glow radius, plus an
+automatic-radius reset action. It also retains examples
+for multiline text, range slider, notification, date/time picker, breadcrumb,
+dockable panel and all three knob modes in their related categories.
+
+`Win/Tests/RunEventHooks.ps1` includes `SwitchLEDRegression.lua`, which checks all
+32 switch skin combinations, native input/audio events, actual LED pixel output,
+setting validation, disposal and state round trips.
+
+### Log viewer
+
+`Controls.logViewer(parent, options)` is an owner-drawn UTF-8 log with independent
+entries, entry selection, text selection, scrolling and optional severity.
+Native editing controls are not layered over the entries, so application-painted
+game backgrounds remain visible without putting opaque text boxes over them.
+
+```lua
+local oLog = Controls.logViewer(oParent, {
+    Skin = oSkin,
+    Entries = {
+        {Id = "arrival", Text = "You enter the watchtower.", Icon = pIcon},
+        {Id = "door", Text = "A hidden door opens.", Timestamp = "12:00:01"},
+    },
+    SeverityEnabled = false,
+    MaxEntries = 1000,
+    AutoScroll = true,
+});
+oLog.layout(20, 20, 520, 280);
+oLog.addEntry({Text = "You gain 25 experience.", Icon = pIcon}, true);
+oLog.addEntries({{Text = "First action"}, {Text = "Second action"}}, true);
+oLog.setTextSelection({Id = "arrival", Start = 4, Finish = 9}, true);
+local sSelected = oLog.getSelectedText();
+oLog.copySelected();
+```
+
+Entry records contain required `Text`, optional stable string `Id`, image-path
+`Icon`, string `Timestamp`, and optional `Severity` (`trace`, `debug`, `info`,
+`success`, `warning`, `error`). Omitted IDs are generated independently per log.
+Severity is disabled by default and is never required for plain/game entries.
+When enabled, it selects named skin colors and optional severity labels.
+Timestamps are application-supplied strings; the control does not invent them.
+Invalid batches, duplicate IDs and unreadable icons fail before replacing entries.
+
+Every setting below is a flat constructor option and has matching
+`get<Property>()` / `set<Property>(value, notify)` methods. `getLogOptions()`
+returns an independent settings record; `setLogOptions(partialRecord, notify)`
+validates the entire requested change before committing any setting.
+
+| Setting | Default / accepted values |
+| --- | --- |
+| `MaxEntries` | 1000; integer 1–1,000,000. Oldest entries are discarded when exceeded. |
+| `Wrap` | true; false enables horizontal scrolling for long entries. |
+| `AutoScroll` | true. Appends follow only while the viewport is at the tail; scrolling away pauses following. |
+| `PauseOnSelection` | true. Entry/text selection pauses tail following so new actions do not move text while it is being selected. Explicit following resumes even if entries remain selected. |
+| `Transparent` | false. True omits normal row/surface fills; hover and selection overlays remain skinned. |
+| `SeverityEnabled`, `ShowSeverity` | false, true. Severity color/labels remain independent of filtering. |
+| `Timestamps` | false; show provided timestamp strings. |
+| `IconSize`, `RowPadding`, `EntryGap`, `LineSpacing` | 20, 6, 2, 2 pixels; integers 0–128. Icons are contained without distorting aspect ratio. |
+| `ScrollBarWidth`, `ScrollStep` | 12 pixels (integer 6–64), 40 pixels (1–1000). |
+| `FilterText`, `CaseSensitive` | empty text, false. Filtering is plain substring matching; case-insensitivity uses Lua string casing. |
+| `SeverityFilter` | empty array means all entries. Otherwise a dense array of severity names; `none` matches entries without severity. |
+| `MultiSelect`, `SelectionMode` | true; `both`, `entries` or `text`. Plain dragging selects text in both/text modes. Ctrl/Shift clicks select entries. |
+| `CopyTimestamps`, `CopySeverity` | false, false; include metadata when copying complete entries. |
+| `ContextMenu` | true; enables the skinned copy/select menu exposed as `log.ContextMenu`. |
+| `AlternatingRows`, `EmptyText` | false, `No entries`; both have independent skin materials. |
+
+For a transparent log over changing game artwork, supply
+`Background(dc, log)` to paint the application's underlying pixels inside the
+log's client area and set `Transparent = true`. Without that callback, transparent
+mode clears to the native parent's solid background color; it cannot automatically
+see arbitrary graphics behind a separate native child window. The demo's action
+log uses a replaceable game-background PNG through this callback.
+
+| Action / getter | Behavior |
+| --- | --- |
+| `getEntries()`, `getEntry(id)` | Independent retained entry data; missing entry returns nil. |
+| `setEntries(entries, notify)` | Atomic replacement; stable IDs retain applicable selection. Identical entries do no work. |
+| `addEntry(entryOrText, notify)`, `addEntries(entries, notify)` | Append one entry or a batch; a batch has one trim/layout pass. |
+| `insertEntry(index, entry, notify)`, `setEntry(id, entry, notify)` | Insert at a one-based position or replace one stable ID. |
+| `removeEntry(id, notify)`, `clear(notify)` | Remove one entry or all history; missing IDs/repeated empty clears do nothing. |
+| `getEntryCount()`, `getVisibleCount()`, `getVisibleEntries()` | Retained count and filter-matching count/data; “visible” includes matches outside the viewport. |
+| `getValue()`, `setValue(idOrNil, notify)` | Primary selected entry; nil clears entry selection. |
+| `getSelected()`, `setSelected(ids, notify)`, `getSelectedEntries()` | Insertion-order selection arrays, with last existing requested ID as primary. Missing IDs are skipped for partial reloads. |
+| `selectAll(notify)` | Select all filter matches; text-only mode selects all characters of the primary entry. |
+| `getTextSelection()`, `setTextSelection(rangeOrFalse, notify)` | `{Id, Start, Finish}` uses zero-based Unicode character boundaries, not byte offsets; false clears. Reversed boundaries are ordered and oversized positions clamp. |
+| `clearTextSelection(notify)`, `getSelectedText()` | Clear a substring or retrieve it. With no nonempty substring, selected entries join with newlines. |
+| `copySelected()`, `copyAll()` | Unicode clipboard copy; returns `success, text`. Copy-all uses all filter matches and preserves selection. |
+| `getPosition()`, `setPosition(x, y, notify)`, `scrollBy(dx, dy, notify)` | Pixel scrolling with clamping and follow-state updates. |
+| `scrollToStart(notify)`, `scrollToEnd(notify)`, `scrollToEntry(id, notify)` | Navigate history; end resumes tail following. Hidden/missing entries are skipped. |
+| `isFollowingTail()`, `getContentSize()`, `getEntryRect(id)`, `hitTest(x,y)` | Query layout and hit geometry without obtaining native handles. |
+| `getFollowingTail()`, `setFollowingTail(flag, notify)` | Explicitly pause/resume following; saved state preserves this independently of AutoScroll. |
+| `invalidateLayout()` | Remeasure after mutating an existing `Skin.Font` in place. Ordinary appends reuse unchanged entry wraps. |
+
+Ctrl+A selects all, Ctrl+C copies, Escape clears selection, Enter activates an
+entry, arrows/Page/Home/End navigate, and the wheel scrolls. A right-click opens
+the skinned context menu. Substrings may span multiple lines within one entry;
+complete-entry selection may span arbitrary entries. Existing UTF-8 bytes and
+line endings are retained when copied.
+
+Log events include shared mouse/keyboard/focus/audio events plus `entryAdded`,
+`entryRemoved`, `entryChanged`, `entriesChanged`, `cleared`, `selectionChanged`,
+`valueChanged`, `textSelectionChanged`, `entryHovered`, `entryLeft`,
+`entryActivated`, `copied`, `scrolled` and `followChanged`. Every setting also has
+its lower-camel property event (for example `wrapChanged`, `filterTextChanged`,
+`iconSizeChanged`) and aggregate `optionsChanged`. Optional notify flags default
+to false; user gestures and successful clipboard copies notify automatically.
+
+Skin prefix `Log Viewer` supplies Surface Normal/Hover/Pressed/Disabled, Entry
+Normal/Hover/Selected/Disabled/Alternate, Text Normal/Disabled, Text Selection,
+Severity trace/debug/info/success/warning/error, Scroll Track, Scroll Thumb
+Normal/Hover/Pressed/Disabled and Focus. Entries supply optional icon paths.
+`Artwork` replaces the family prefix. Captured state includes options, entries,
+entry/text selection and scroll position; missing UI children are still skipped.
+
+### Graphs and charts
+
+Factories are `chart`, `lineChart`, `areaChart`, `barChart`, `scatterChart`,
+`pieChart` and `donutChart`. They share one independent-per-instance engine and
+the same settings/data/event APIs. `setType(type, notify)` switches modes at
+runtime without reconstructing the native control or its tooltip.
+
+```lua
+local oGraph = Controls.lineChart(oParent, {
+    Skin = oSkin, Title = "Actions per round", XLabel = "Round", YLabel = "Actions",
+    Series = {
+        {Id = "player", Text = "Player", Color = {R = 90, G = 195, B = 220}, Points = {
+            {Id = "r1", X = 1, Y = 4}, {Id = "r2", X = 2, Y = 7},
+        }},
+    },
+    MarkerSize = 8, MaxPoints = 120, Tooltips = true, TooltipDelay = 200,
+});
+oGraph.layout(20, 20, 600, 320);
+oGraph.addPoints("player", {{Id = "r3", X = 3, Y = 6}, {Id = "r4", X = 4, Y = 9}}, true);
+oGraph.setChartOptions({GridWidth = 1, LineWidth = 3, ValueLabels = true}, true);
+oGraph.setFormatter("Y", function(nValue) return tostring(nValue).." actions"; end);
+oGraph.on("pointClicked", function(oSource, tEvent)
+    print(tEvent.Series, tEvent.Point, tEvent.Data.Y);
+end);
+```
+
+Series records contain stable string `Id`, `Text`, `Points`, `Visible` (true),
+optional RGBA `Color`, and an optional custom `Marker` image path. Points contain
+stable string `Id`, finite `X`/`Y`, optional `Text` and RGBA `Color`. X defaults
+to the point's position when replacing data and advances from the last X when
+appending. IDs may be omitted and are assigned before commit. Points are retained
+in application order; line/area interpolation follows that order. Coordinates
+are limited to ±1e100, and axis ranges must have distinct finite bounds.
+
+The first visible series supplies pie/donut slices; Y is slice magnitude and
+point Text supplies slice/legend text. Negative magnitudes are rejected before
+mutation. All-zero totals and empty data draw the empty state. Stacked bars
+accumulate positive and negative values separately at each X. Horizontal bars
+place category X on the vertical axis and numeric Y on the horizontal axis.
+
+Every setting below has an individual get/set pair and is a flat constructor
+option. `getChartOptions()` returns a plain independent copy;
+`setChartOptions(partialRecord, notify)` validates the full proposed change
+before committing. Nil required settings are rejected; automatic ranges use
+false in aggregate records or nil/false with individual range setters.
+
+| Settings | Defaults / controls |
+| --- | --- |
+| `Type` | `line`; line, area, bar, scatter, pie or donut. |
+| `Title`, `Subtitle`, `XLabel`, `YLabel`, `EmptyText` | Empty titles/axis names; `No data` for empty plots. |
+| `Legend`, `LegendToggle` | true, true; click Cartesian legends to show/hide series; slice legends select their points. |
+| `LegendPosition`, `LegendWidth`, `LegendRowHeight`, `LegendSwatchSize` | bottom (top/bottom/left/right), 130, 24, 12 pixels. |
+| `Axes`, `Grid`, `GridX`, `GridY` | true; axes and each grid direction can be disabled independently. |
+| `GridWidth`, `GridStyle`, `AxisWidth` | 1, solid (solid/dash/dot), 1. Widths 1–64 pixels. |
+| `TickLabels`, `CategoryLabels`, `TickCount`, `Precision`, `AutoPrecision` | true, true, 5 (2–20), 3 (0–10), true. Automatic axis precision prevents distinct fractional ticks rounding to duplicate labels. Value labels keep configured precision; extreme magnitudes use scientific text. Bars use centered point Text/X category labels when enabled. |
+| `ValueLabels`, `SliceLabels`, `PercentLabels`, `ValueLabelOffset` | false, false, false, `{X=5,Y=-18}`. Slice labels add names; percentage mode changes pie/donut numeric labels. |
+| `Markers`, `MarkerSize`, `TintMarkers`, `TintBars` | true, 7, true, true. Neutral skin images follow series/point colors; disable tinting to preserve authored image colors. Custom per-series Marker paths retain their authored colors. |
+| `LineWidth`, `LineStyle`, `Interpolation` | 2, solid (solid/dash/dot), linear (linear/step). |
+| `AreaOpacity` | 0.3, range 0–1. Actual alpha compositing over the plot skin. |
+| `BarGap`, `Stacked`, `Orientation`, `Baseline` | 0.2 (0–0.95), false, vertical (vertical/horizontal), 0. |
+| `HoleSize`, `RadiusScale`, `SliceGap` | 0.5 (0–0.95), 0.92 (0.05–1), 0 degrees (0–45). |
+| `StartAngle`, `Clockwise` | -90 degrees (up), true. Zero points right; positive clockwise angles follow screen coordinates. |
+| `XRange`, `YRange` | false means automatic; explicit ranges are `{Min=...,Max=...}`. |
+| `XScale`, `YScale` | linear or log. Log axes/ranges require positive coordinates. |
+| `Padding` | `{Left=54,Right=20,Top=18,Bottom=42}` pixels; each side 0–512. Titles and legends reserve additional space. |
+| `ZoomEnabled`, `PanEnabled`, `ZoomFactor`, `HitRadius` | true, true, 1.2 (1.01–10), 10 pixels (1–64). |
+| `Tooltips`, `TooltipDelay` | true, 200 milliseconds (0–60,000). Only actual point targets start a tooltip; zero shows immediately. |
+| `Supersampling`, `MaxPoints` | 2 (integer 1–4), 10,000 per series (integer 1–1,000,000). History limit changes trim immediately. |
+
+| Action / getter | Behavior |
+| --- | --- |
+| `getSeries(id?)`, `setSeries(series, notify)` | Independent all/one-series data; atomic replacement. Identical data is silent. |
+| `addSeries(series, notify)`, `removeSeries(id, notify)`, `setSeriesVisible(id, visible, notify)` | Manage independent series and legend visibility. |
+| `getPoint(seriesId, pointId)`, `addPoint(seriesId, point, notify)`, `addPoints(seriesId, points, notify)` | Stable point lookup/appends; batch appends perform one validation/retention/layout pass. |
+| `setPoint(seriesId, pointId, point, notify)`, `removePoint(seriesId, pointId, notify)` | Replace/remove data without changing retained point identities. |
+| `clear(seriesId?, notify)` | Clear one series' points, or all series with nil. |
+| `getValue()`, `setValue({Series=id,Point=id}OrNil, notify)` | Point selection; nil clears. Missing IDs are skipped for partial restoration. |
+| `getDataBounds()`, `getViewRange()`, `getPlotRect()`, `getPointPosition(seriesId, pointId)` | Automatic bounds, effective view, client plot rectangle and point/bar/slice center. |
+| `hitTest(x,y)` | Existing target IDs or nil; excludes clipped targets, donut holes and slice gaps. |
+| `setViewRange(xMin,xMax,yMin,yMax,notify)`, `resetView(notify)` | Set both axes atomically or restore automatic ranges. |
+| `zoom(factor, centerX?, centerY?, notify)`, `pan(dx,dy,notify)` | Programmatic Cartesian navigation; factor below one zooms in. Log pan deltas use log space. Pie/donut ignore these actions. |
+| `setFormatter('X'/'Y'/'Value', callbackOrNil)` | Runtime number-to-text callback; receives number and optional point/series records. Callbacks are excluded from state. |
+| `getChartState()`, `setChartState(state)` | Coupled options/data/selection/enabled state. Validate together and restore silently onto existing objects. |
+
+Hover a target for its tooltip; click to select. Left/right keys navigate points,
+Escape clears selection, Home resets view, plus/minus or wheel zooms, and dragging
+pans Cartesian plots. Pie/donut legends select slices. Programmatic zoom/pan are
+available even when their gesture options are disabled.
+
+Chart events include shared native events plus `dataChanged`, `seriesAdded`,
+`seriesRemoved`, `seriesVisibilityChanged`, `pointAdded`, `pointRemoved`,
+`pointChanged`, `selectionChanged`, `valueChanged`, `pointHovered`, `pointLeft`,
+`pointClicked`, `legendClicked` and `viewChanged`. Each setting has a lower-camel
+property event (for example `markerSizeChanged`, `holeSizeChanged`,
+`tooltipDelayChanged`) plus aggregate `optionsChanged`. Semantic setter
+notifications are opt-in and changed-only; user interactions notify automatically.
+Listeners receive `(component, event)`; point events identify stable Series/Point
+IDs and click/hover events include independent Data records.
+
+Skin prefix `Chart` supplies Surface Normal/Hover/Pressed/Disabled, Plot, Grid
+and Axis state materials, Text Normal/Disabled, Focus, eight Series palettes
+(Normal/Hover/Pressed/Disabled/Selected), and independent Marker/Bar/Swatch image
+states. Neutral images define shape, shading and alpha and are tinted with the
+selected palette or optional data colors. Series colors control strokes/areas;
+point colors override markers, bars and slices. RGBA alpha applies to these
+rendered elements. `Artwork` selects a complete alternate prefix. A bounded image
+cache holds tinted parts; cached plot pixels are reused until data, geometry,
+selection or appearance changes. Supplied PNGs are regenerated by
+`Win/Source/GenerateInspectorArtwork.ps1`.
+
+Charts use a state adapter to validate saved options and data together. Restoring
+a log-axis/pie snapshot over live signed data does not fail because of the old
+dataset; the saved dataset is validated against its saved settings first. No
+control, tooltip or child object is constructed during restoration. Shared
+state traversal still skips absent children. `wxLuma.State.copy(value)` is also
+available for independent plain-data copies with the same validation rules.
+
+The demo has 14 related categories and 52 documented type sections, including
+plain/transparent logs, line/area graphs, grouped/stacked/horizontal bars,
+pie/donut charts and scatter plots. Examples retain hover/click audio hooks,
+including the logs' copy menus. `LogChartRegression.lua`, included in
+`Win/Tests/RunEventHooks.ps1`, checks selection/copy payloads, data/option APIs,
+native interaction, state, real pixel output, alpha and tooltip timing.
 
 ## Historical measurements and export notes
 

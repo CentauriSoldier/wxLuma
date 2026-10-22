@@ -357,8 +357,8 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    check(#tWorkbench.Widgets.Tabs.Pages == 12, "Tools workbench category added.");
-    tWorkbench.Widgets.Tabs.setValue(10);
+    check(#tWorkbench.Widgets.Tabs.Pages == #tWorkbench.Gallery.Categories, "Every gallery category has a tab.");
+    tWorkbench.Gallery.show("Toolbar", true);
     tWorkbench.Layout();
     _wx.wxYield();
     check(tWorkbench.Widgets.Toolbar and tWorkbench.Widgets.StatusBar and tWorkbench.Widgets.ColorPicker,

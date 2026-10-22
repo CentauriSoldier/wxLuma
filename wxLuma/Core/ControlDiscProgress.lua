@@ -15,6 +15,8 @@ local ControlDiscProgress = {};
 @param table tOptions Common progress options, Reserved (capacity units, default 0),
     ReserveOrigin for globe or ReserveDirection for radial. Radial also accepts
     InnerRadius/OuterRadius percentages. Supersampling is 2 or 4 (default 4).
+    ReserveRenderer is auto/native/strips (default auto). Native shapes and cached
+    masks handle discs; strips opt into the original analytic boundary rasterizer.
     Omitted reserve geometry is automatic.
 @param string sKind GlobeProgress or RadialProgress.
 @ret table oComponent Independent public component with shared input/containment API.
@@ -83,12 +85,16 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
     end
 
     local nSupersampling = tOptions.Supersampling or 4;
+    local sReserveRenderer = tOptions.ReserveRenderer or "auto";
     assert(nSupersampling == 2 or nSupersampling == 4, "Supersampling must be 2 or 4.");
+    assert(sReserveRenderer == "auto" or sReserveRenderer == "native" or sReserveRenderer == "strips",
+        "ReserveRenderer must be auto, native or strips.");
     _Reserve.validate(tOptions, sKind);
     local oComponent = _ControlSurface.create(oParent, tOptions, sKind);
     local tExtraEvents = bGlobe and {"appearanceChanged", "orientationChanged", "originChanged"}
         or {"appearanceChanged", "directionChanged"};
     tExtraEvents[#tExtraEvents + 1] = "supersamplingChanged";
+    tExtraEvents[#tExtraEvents + 1] = "reserveRendererChanged";
 
     for _, sEvent in ipairs(_Reserve.Events) do
         tExtraEvents[#tExtraEvents + 1] = sEvent;
@@ -96,12 +102,104 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
 
     local tEvents = _ControlEvents.attach(oComponent, nil, tExtraEvents);
     local oBackground = _wx.wxBrush(_wx.wxColour(24, 29, 36));
+    local tMaterials = {};
+    local sMaterialKey;
+
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.clearMaterials
+    @desc Releases owned material brushes on appearance/size changes and disposal.
+        Value updates reuse brushes. Borrowed skin bitmaps remain skin-owned.
+    !]]
+    local function fClearMaterials()
+        for _, oBrush in pairs(tMaterials) do
+            oBrush:delete();
+        end
+
+        tMaterials = {};
+        sMaterialKey = nil;
+    end
+
+    local tBuffers = {};
+    local nBufferSize;
+
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.clearBuffers
+    @desc Releases reusable, deselected work bitmaps on size changes and disposal.
+        Each role owns one bitmap, so dragging never grows the buffer collection.
+    !]]
+    local function fClearBuffers()
+        for _, oBitmap in pairs(tBuffers) do
+            oBitmap:delete();
+        end
+
+        tBuffers = {};
+        nBufferSize = nil;
+    end
+
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.buffer
+    @desc Returns an owned work bitmap for a raster role. Callers deselect it
+        from their temporary DC before another operation or eventual disposal.
+    !]]
+    local function fBuffer(sRole, nSize, nDepth)
+        if (nBufferSize ~= nSize) then
+            fClearBuffers();
+            nBufferSize = nSize;
+        end
+
+        if (not tBuffers[sRole]) then
+            tBuffers[sRole] = _wx.wxBitmap(nSize, nSize, nDepth or -1);
+        end
+
+        return tBuffers[sRole];
+    end
+
     local oRaster;
     local sCachedRaster;
     oComponent.Min   = tOptions.Min;
     oComponent.Max   = tOptions.Max;
     oComponent.Value = math.max(tOptions.Min, math.min(tOptions.Max, tOptions.Value));
     local tReserve = _Reserve.attach(oComponent, tOptions, tEvents, sKind);
+    local fUpdateReserve;
+    local nDiscDiameter;
+    local tReservePlan;
+    local sReservePlanKey;
+    local sReserveBaseKey;
+
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.getReserveRenderer
+    @desc Returns auto (native for discs), native, or the explicit strips fallback.
+    @ret string sRenderer Configured reserve rendering policy.
+    !]]
+    function oComponent.getReserveRenderer()
+        return sReserveRenderer;
+    end
+
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.setReserveRenderer
+    @desc Selects reserve rendering without changing value or geometry. Effective
+        changes rebuild this disc's masks/base before refresh and notification.
+    @param string sRenderer auto/native/strips.
+    @param boolean|nil bNotify Emit reserveRendererChanged; default silent.
+    @ret table oComponent This component.
+    !]]
+    function oComponent.setReserveRenderer(sRenderer, bNotify)
+        assert(sRenderer == "auto" or sRenderer == "native" or sRenderer == "strips",
+            "ReserveRenderer must be auto, native or strips.");
+
+        if (not oComponent.Disposed and sReserveRenderer ~= sRenderer) then
+            local sOld = sReserveRenderer;
+            sReserveRenderer = sRenderer;
+            fUpdateReserve();
+            oComponent.refresh();
+
+            if (bNotify) then
+                tEvents.emit("reserveRendererChanged", {ReserveRenderer = sRenderer, OldReserveRenderer = sOld});
+            end
+        end
+
+        return oComponent;
+    end
 
     --[[!
     @fqxn wxLuma.UI.ControlDiscProgress.getSupersampling
@@ -126,6 +224,7 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
         if (not oComponent.Disposed and nSupersampling ~= nScale) then
             local nOld = nSupersampling;
             nSupersampling = nScale;
+            fUpdateReserve();
             oComponent.refresh();
 
             if (bNotify) then
@@ -138,7 +237,7 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
 
     --[[!
     @fqxn wxLuma.UI.ControlDiscProgress.setValue
-    @desc Clamps finite progress to the creation range. Effective changes repaint;
+    @desc Clamps finite progress to Min and the reserve-adjusted effective maximum. Effective changes repaint;
         notifications retain OnChange(value, component) and valueChanged semantics.
     @param number nValue Requested progress value.
     @param boolean|nil bNotify Emit changed-only notifications; default silent.
@@ -146,7 +245,7 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
     !]]
     function oComponent.setValue(nValue, bNotify)
         assert(_finite(nValue), "Progress value must be finite.");
-        nValue = math.max(oComponent.Min, math.min(oComponent.Max, nValue));
+        nValue = math.max(oComponent.Min, math.min(oComponent.getEffectiveMax(), nValue));
 
         if (not oComponent.Disposed and oComponent.Value ~= nValue) then
             local nOldValue = oComponent.Value;
@@ -209,6 +308,7 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
             sOrientation, sOrigin = sNewOrientation, sNewOrigin;
 
             if (sOrientation ~= sOldOrientation or sOrigin ~= sOldOrigin) then
+                fUpdateReserve();
                 oComponent.refresh();
 
                 if (bNotify) then
@@ -297,6 +397,7 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
             if (not oComponent.Disposed and sDirection ~= sValue) then
                 local sOld = sDirection;
                 sDirection = sValue;
+                fUpdateReserve();
                 oComponent.refresh();
 
                 if (bNotify) then
@@ -308,14 +409,100 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
         end
     end
 
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.prepareReserve
+    @desc Recalculates this disc's fixed reserve intersections when reserve,
+        size, quality or geometry changes. Value changes reuse its private plan.
+        Setters call this synchronously before refresh and change notifications.
+    !]]
+    local function fPrepareReserve(nDiameter)
+        if (not nDiameter) then
+            local nWidth, nHeight = oComponent.Control:GetClientSizeWH();
+            nDiameter = nDiscDiameter or math.floor(math.min(nWidth, nHeight));
+        end
+
+        nDiscDiameter = nDiameter;
+        local sKey = table.concat({nDiameter, nSupersampling, sReserveRenderer, tReserve.Reserved,
+            sOrigin or "auto", sDirection or "auto", tReserve.ReserveOrigin or "auto",
+            tReserve.ReserveDirection or "auto", tReserve.InnerRadius or 0, tReserve.OuterRadius or 100}, ":");
+
+        if (sKey == sReservePlanKey) then
+            return;
+        end
+
+        _Reserve.releaseDisc(tReservePlan);
+        tReservePlan = nil;
+        sReserveBaseKey = nil;
+        sReservePlanKey = sKey;
+
+        if (tReserve.Reserved <= 0 or nDiameter <= 4) then
+            return;
+        end
+
+        local nSize = nDiameter * nSupersampling;
+        local nCenter = math.floor(nDiameter / 2) * nSupersampling;
+        local nRadius = (math.floor(nDiameter / 2) - 2) * nSupersampling;
+        local nInner = nRadius * (tReserve.InnerRadius or 0) / 100;
+        local nOuter = nRadius * (tReserve.OuterRadius or 100) / 100;
+        local tOpposite = {left = "right", right = "left", top = "bottom", bottom = "top"};
+        local sReserveOrigin = tReserve.ReserveOrigin or tOpposite[sOrigin];
+        local sReserveDirection = tReserve.ReserveDirection or (sDirection == "outward" and "inward" or "outward");
+
+        --[[!
+        @fqxn wxLuma.UI.ControlDiscProgress.prepareReserve.linearCoordinate
+        @desc Measures distance from a chosen edge across the disc diameter.
+            The reserve edge is independent of the current fill axis.
+        !]]
+        local function fLinear(sEdge, nX, nY)
+            if (sEdge == "left") then
+                return (nX - nCenter + nRadius) / (2 * nRadius);
+            elseif (sEdge == "right") then
+                return (nCenter + nRadius - nX) / (2 * nRadius);
+            elseif (sEdge == "top") then
+                return (nY - nCenter + nRadius) / (2 * nRadius);
+            end
+
+            return (nCenter + nRadius - nY) / (2 * nRadius);
+        end
+
+        --[[!
+        @fqxn wxLuma.UI.ControlDiscProgress.prepareReserve.coordinates
+        @desc Rejects points outside the radial band, then returns independent
+            current/reserve coordinates at supersampled pixel centers.
+        !]]
+        local function fCoordinates(nX, nY)
+            nX, nY = nX + 0.5, nY + 0.5;
+            local nDistance = math.sqrt((nX - nCenter)^2 + (nY - nCenter)^2);
+
+            if (nDistance < nInner or nDistance >= nOuter) then
+                return nil;
+            end
+
+            if (bGlobe) then
+                return fLinear(sOrigin, nX, nY), fLinear(sReserveOrigin, nX, nY);
+            end
+
+            local nRadial = (nDistance - nInner) / (nOuter - nInner);
+            return sDirection == "outward" and nRadial or 1 - nRadial,
+                sReserveDirection == "outward" and nRadial or 1 - nRadial;
+        end
+
+        tReservePlan = _Reserve.prepareDisc(nSize, tReserve.Reserved / (oComponent.Max - oComponent.Min),
+            {Kind = bGlobe and "globe" or "radial", Center = nCenter, Radius = nOuter,
+                Inner = nInner, Direction = sDirection, Origin = sOrigin,
+                ReserveOrigin = sReserveOrigin, ReserveDirection = sReserveDirection}, fCoordinates, sReserveRenderer);
+    end
+
     -- Rebuild only on visual state changes. Bitmap materials stay aligned with
     -- the complete disc as its fill changes; the control owns no skin bitmaps.
     local function fRaster(nDiameter, nFraction, bEnabled)
+        nDiscDiameter = nDiameter;
+        nFraction = math.max(0, math.min(1 - tReserve.Reserved / (oComponent.Max - oComponent.Min), nFraction));
         local sPolicy = bGlobe and sOrigin or sDirection;
         local sKey = table.concat({nDiameter, nFraction, sPolicy, sAppearance,
             bEnabled and "enabled" or "disabled", tReserve.Reserved,
             tReserve.ReserveOrigin or "auto", tReserve.ReserveDirection or "auto",
-            tReserve.InnerRadius or 0, tReserve.OuterRadius or 100, nSupersampling}, ":");
+            tReserve.InnerRadius or 0, tReserve.OuterRadius or 100, nSupersampling, sReserveRenderer}, ":");
 
         if (sKey == sCachedRaster) then
             return;
@@ -325,29 +512,39 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
         local nSize   = nDiameter * nScale;
         local nCenter = math.floor(nDiameter / 2) * nScale;
         local nRadius = (math.floor(nDiameter / 2) - 2) * nScale;
-        local oTrack, oFill, oReserved;
+        local sNewMaterialKey = table.concat({nSize, sAppearance, bEnabled and "enabled" or "disabled",
+            tReserve.Reserved > 0 and "reserved" or "plain"}, ":");
+        local oTrack, oFill, oReserved = tMaterials.Track, tMaterials.Fill, tMaterials.Reserve;
 
-        if (sAppearance == "skin") then
-            local sState = bEnabled and "Normal" or "Disabled";
-            local oTrackBitmap = oComponent.Skin.getBitmap(sArtwork.." Track "..sState, nSize, nSize);
-            local oFillBitmap  = oComponent.Skin.getBitmap(sArtwork.." Fill "..sState, nSize, nSize);
-            oTrack = _wx.wxBrush(oTrackBitmap);
-            oFill  = _wx.wxBrush(oFillBitmap);
+        if (sMaterialKey ~= sNewMaterialKey) then
+            fClearMaterials();
+            oReserved = nil;
 
-            if (tReserve.Reserved > 0) then
-                oReserved = _wx.wxBrush(oComponent.Skin.getBitmap(sArtwork.." Reserve "..sState, nSize, nSize));
+            if (sAppearance == "skin") then
+                local sState = bEnabled and "Normal" or "Disabled";
+                local oTrackBitmap = oComponent.Skin.getBitmap(sArtwork.." Track "..sState, nSize, nSize);
+                local oFillBitmap  = oComponent.Skin.getBitmap(sArtwork.." Fill "..sState, nSize, nSize);
+                oTrack = _wx.wxBrush(oTrackBitmap);
+                oFill  = _wx.wxBrush(oFillBitmap);
+
+                if (tReserve.Reserved > 0) then
+                    oReserved = _wx.wxBrush(oComponent.Skin.getBitmap(sArtwork.." Reserve "..sState, nSize, nSize));
+                end
+            else
+                oTrack = _wx.wxBrush(_wx.wxColour(43, 50, 59));
+                oFill = _wx.wxBrush(bEnabled and _wx.wxColour(tFillColour.R, tFillColour.G, tFillColour.B)
+                    or _wx.wxColour(61, 67, 73));
             end
-        else
-            oTrack = _wx.wxBrush(_wx.wxColour(43, 50, 59));
-            oFill = _wx.wxBrush(bEnabled and _wx.wxColour(tFillColour.R, tFillColour.G, tFillColour.B)
-                or _wx.wxColour(61, 67, 73));
+
+            if (tReserve.Reserved > 0 and not oReserved) then
+                oReserved = _wx.wxBrush(bEnabled and _wx.wxColour(142, 99, 164) or _wx.wxColour(72, 65, 78));
+            end
+
+            tMaterials = {Track = oTrack, Fill = oFill, Reserve = oReserved};
+            sMaterialKey = sNewMaterialKey;
         end
 
-        if (tReserve.Reserved > 0 and not oReserved) then
-            oReserved = _wx.wxBrush(bEnabled and _wx.wxColour(142, 99, 164) or _wx.wxColour(72, 65, 78));
-        end
-
-        local oBitmap = _wx.wxBitmap(nSize, nSize);
+        local oBitmap = fBuffer("disc", nSize);
         local oMemory = _wx.wxMemoryDC();
         oMemory:SelectObject(oBitmap);
         oMemory:SetBackground(oBackground);
@@ -357,85 +554,48 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
         oMemory:DrawCircle(nCenter, nCenter, nRadius);
         oMemory:SetBrush(oFill);
 
-        if (tReserve.Reserved > 0 or tReserve.InnerRadius ~= nil or tReserve.OuterRadius ~= nil) then
-            oMemory:Clear();
+        if (tReserve.Reserved > 0) then
+            fPrepareReserve(nDiameter);
+            local oBase = fBuffer("reserveBase", nSize);
+            local sBaseKey = sReservePlanKey..":"..sMaterialKey;
+
+            if (sReserveBaseKey ~= sBaseKey) then
+                local oBaseDC = _wx.wxMemoryDC();
+                oBaseDC:SelectObject(oBase);
+                oBaseDC:SetBackground(oBackground);
+                oBaseDC:Clear();
+                oBaseDC:SetPen(_wx.wxTRANSPARENT_PEN);
+                _Reserve.drawDiscBase(oBaseDC, tReservePlan, {Track = oTrack, Reserve = oReserved});
+                oBaseDC:SelectObject(_wx.wxNullBitmap);
+                oBaseDC:delete();
+                sReserveBaseKey = sBaseKey;
+            end
+
+            oMemory:DrawBitmap(oBase, 0, 0, false);
+            oMemory:SetBrush(oFill);
+            _Reserve.drawDiscFill(oMemory, tReservePlan, nFraction, {Track = oTrack, Fill = oFill});
+        elseif (tReserve.InnerRadius ~= nil or tReserve.OuterRadius ~= nil) then
             local nInner = nRadius * (tReserve.InnerRadius or 0) / 100;
             local nOuter = nRadius * (tReserve.OuterRadius or 100) / 100;
-            local nReserved = tReserve.Reserved / (oComponent.Max - oComponent.Min);
-            local tOpposite = {left = "right", right = "left", top = "bottom", bottom = "top"};
-            local sReserveOrigin = tReserve.ReserveOrigin or tOpposite[sOrigin];
-            local sReserveDirection = tReserve.ReserveDirection or (sDirection == "outward" and "inward" or "outward");
-
-            --[[!
-            @fqxn wxLuma.UI.ControlDiscProgress.raster.linearCoordinate
-            @desc Measures distance from a chosen edge across the disc diameter.
-                The reserve edge is independent of the current fill axis.
-            !]]
-            local function fLinear(sEdge, nX, nY)
-                if (sEdge == "left") then
-                    return (nX - nCenter + nRadius) / (2 * nRadius);
-                elseif (sEdge == "right") then
-                    return (nCenter + nRadius - nX) / (2 * nRadius);
-                elseif (sEdge == "top") then
-                    return (nY - nCenter + nRadius) / (2 * nRadius);
-                end
-
-                return (nCenter + nRadius - nY) / (2 * nRadius);
+            oMemory:SetBrush(oBackground);
+            oMemory:Clear();
+            local nFillOuter = sDirection == "outward" and nInner + (nOuter - nInner) * nFraction or nOuter;
+            local nFillInner = sDirection == "inward" and nOuter - (nOuter - nInner) * nFraction or nInner;
+            oMemory:SetBrush(oTrack);
+            oMemory:DrawCircle(nCenter, nCenter, math.floor(nOuter));
+            if (nFraction > 0) then
+                oMemory:SetBrush(oFill);
+                oMemory:DrawCircle(nCenter, nCenter, math.floor(nFillOuter));
             end
 
-            --[[!
-            @fqxn wxLuma.UI.ControlDiscProgress.raster.coordinates
-            @desc Rejects points outside the radial band, then returns independent
-                current/reserve coordinates at supersampled pixel centers.
-            !]]
-            local function fCoordinates(nX, nY)
-                nX, nY = nX + 0.5, nY + 0.5;
-                local nDistance = math.sqrt((nX - nCenter)^2 + (nY - nCenter)^2);
-
-                if (nDistance < nInner or nDistance >= nOuter) then
-                    return nil;
-                end
-
-                if (bGlobe) then
-                    return fLinear(sOrigin, nX, nY), fLinear(sReserveOrigin, nX, nY);
-                end
-
-                local nRadial = (nDistance - nInner) / (nOuter - nInner);
-                return sDirection == "outward" and nRadial or 1 - nRadial,
-                    sReserveDirection == "outward" and nRadial or 1 - nRadial;
-            end
-
-            -- With no reserve retain the original distance-based radial fill.
-            -- Reserved shapes use the remaining path so perpendicular policies
-            -- cannot overlap current or prevent a completely full usable region.
-            if (nReserved == 0) then
-                oMemory:SetBrush(oBackground);
-                oMemory:Clear();
-                local nFillOuter = sDirection == "outward" and nInner + (nOuter - nInner) * nFraction or nOuter;
-                local nFillInner = sDirection == "inward" and nOuter - (nOuter - nInner) * nFraction or nInner;
+            if (nFillInner > 0) then
                 oMemory:SetBrush(oTrack);
-                oMemory:DrawCircle(nCenter, nCenter, math.floor(nOuter));
-                if (nFraction > 0) then
-                    oMemory:SetBrush(oFill);
-                    oMemory:DrawCircle(nCenter, nCenter, math.floor(nFillOuter));
-                end
+                oMemory:DrawCircle(nCenter, nCenter, math.floor(nFillInner));
+            end
 
-                if (nFillInner > 0) then
-                    oMemory:SetBrush(oTrack);
-                    oMemory:DrawCircle(nCenter, nCenter, math.floor(nFillInner));
-                end
-
-                if (nInner > 0) then
-                    oMemory:SetBrush(oBackground);
-                    oMemory:DrawCircle(nCenter, nCenter, math.floor(nInner));
-                end
-            else
-                _Reserve.drawMask(oMemory, nSize, nSize, fCoordinates, nReserved,
-                    nReserved < 1 and nFraction / (1 - nReserved) or 0,
-                    {Track = oTrack, Fill = oFill, Reserve = oReserved},
-                    {Kind = bGlobe and "globe" or "radial", Center = nCenter, Radius = nOuter,
-                        Inner = nInner, Direction = sDirection, Origin = sOrigin,
-                        ReserveOrigin = sReserveOrigin, ReserveDirection = sReserveDirection});
+            if (nInner > 0) then
+                oMemory:SetBrush(oBackground);
+                oMemory:DrawCircle(nCenter, nCenter, math.floor(nInner));
             end
         elseif (nFraction >= 1) then
             oMemory:DrawCircle(nCenter, nCenter, nRadius);
@@ -479,18 +639,11 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
 
         oMemory:SelectObject(_wx.wxNullBitmap);
         oMemory:delete();
-        oTrack:delete();
-        oFill:delete();
-
-        if (oReserved) then
-            oReserved:delete();
-        end
         local oImage = oBitmap:ConvertToImage();
         local oScaled = oImage:Scale(nDiameter, nDiameter, _wx.wxIMAGE_QUALITY_HIGH);
         local oNewRaster = _wx.wxBitmap(oScaled);
         oScaled:delete();
         oImage:delete();
-        oBitmap:delete();
 
         if (oRaster) then
             oRaster:delete();
@@ -499,6 +652,27 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
         oRaster = oNewRaster;
         sCachedRaster = sKey;
     end
+
+    --[[!
+    @fqxn wxLuma.UI.ControlDiscProgress.updateReserve
+    @desc Prepares fixed intersections and the current image synchronously when
+        geometry changes. The next value update never pays for a stale reserve
+        base, including when a reservation is removed altogether.
+    !]]
+    fUpdateReserve = function()
+        fPrepareReserve();
+
+        if (nDiscDiameter > 4) then
+            fRaster(nDiscDiameter, (oComponent.Value - oComponent.Min) / (oComponent.Max - oComponent.Min),
+                oComponent.isEnabled());
+        end
+    end;
+    tReserve.Changed = fUpdateReserve;
+
+    -- Native layout supplies geometry even for a control not painted yet.
+    oComponent.onLayout = function(nWidth, nHeight)
+        fPrepareReserve(math.floor(math.min(nWidth, nHeight)));
+    end;
 
     --[[!
     @fqxn wxLuma.UI.ControlDiscProgress.draw
@@ -544,11 +718,17 @@ function ControlDiscProgress.create(oParent, tOptions, sKind)
     -- Public destroy is composed by the surface, events and containment helpers.
     -- Dispose owned raster/brush resources once; the native parent owns the control.
     oComponent.onDestroy = function()
+        fClearBuffers();
+        _Reserve.releaseDisc(tReservePlan);
+        tReservePlan = nil;
+        tReserve.Changed = nil;
+
         if (oRaster) then
             oRaster:delete();
             oRaster = nil;
         end
 
+        fClearMaterials();
         oBackground:delete();
     end;
     return oComponent;

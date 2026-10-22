@@ -1,5 +1,6 @@
 local _Containment = require("wxLuma.Core.ControlContainment");
 local _ControlObject = require("wxLuma.Core.ControlObject");
+local _Events = require("wxLuma.Core.ControlEvents");
 
 -- Shared native input/lifecycle for the indicator, button and numeric widgets.
 -- Widget policy and artwork live in their individual modules.
@@ -62,6 +63,20 @@ function ControlInput.create(oParent, tOptions, sKind, fConfigure)
             oControl:Refresh(false);
         end
     end
+
+    --[[!
+    @fqxn wxLuma.UI.ControlInput.isEnabled
+    @desc Reports whether this live input accepts interaction. Shared event
+        observers use the same availability policy as the input handlers.
+    @ret boolean bEnabled Whether input is available.
+    !]]
+    oComponent.isEnabled = tInput.enabled;
+
+    --[[!
+    @fqxn wxLuma.UI.ControlInput.refresh
+    @desc Requests an erase-free repaint through the input's existing helper.
+    !]]
+    oComponent.refresh = tInput.refresh;
 
     --[[!
     @fqxn wxLuma.UI.ControlInput.release
@@ -325,17 +340,23 @@ function ControlInput.create(oParent, tOptions, sKind, fConfigure)
         local oBrush = _wx.wxBrush(_wx.wxColour(24, 29, 36));
         if (tOptions.Background) then
             tOptions.Background(oDC, oComponent);
+        elseif (tInput.background) then
+            tInput.background(oDC, nWidth, nHeight, sState);
         else
             oDC:SetBackground(oBrush);
             oDC:Clear();
         end
         tInput.draw(oDC, nWidth, nHeight, sState, oBrush);
         if (tInput.enabled() and oControl:HasFocus()) then
-            local oPen = _wx.wxPen(_wx.wxColour(105, 125, 145), 1, _wx.wxPENSTYLE_DOT);
-            oDC:SetPen(oPen);
-            oDC:SetBrush(_wx.wxTRANSPARENT_BRUSH);
-            oDC:DrawRectangle(0, 0, nWidth, nHeight);
-            oPen:delete();
+            if (tInput.focus) then
+                tInput.focus(oDC, nWidth, nHeight);
+            else
+                local oPen = _wx.wxPen(_wx.wxColour(105, 125, 145), 1, _wx.wxPENSTYLE_DOT);
+                oDC:SetPen(oPen);
+                oDC:SetBrush(_wx.wxTRANSPARENT_BRUSH);
+                oDC:DrawRectangle(0, 0, nWidth, nHeight);
+                oPen:delete();
+            end
         end
         oBrush:delete();
     end
@@ -433,6 +454,7 @@ function ControlInput.create(oParent, tOptions, sKind, fConfigure)
     end);
     oComponent.setEnabled(tOptions.Enabled ~= false);
     _Containment.attach(oComponent, oControl, tOptions);
+    _Events.attach(oComponent, oComponent.TextControl and {oComponent.TextControl} or nil);
     return oComponent;
 end
 return ControlInput;

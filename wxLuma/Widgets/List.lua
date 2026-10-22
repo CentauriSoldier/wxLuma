@@ -121,6 +121,17 @@ function List.create(oParent, tOptions, sKind)
             oList.HoverRow = nIndex;
             fRefreshRow(nOld);
             fRefreshRow(nIndex);
+
+            -- Report row transitions once, rather than every pointer movement,
+            -- so application audio can follow the same visible hover state.
+            if (tEvents) then
+                if (nOld > 0) then
+                    tEvents.emit("itemLeft", {Index = nOld});
+                end
+                if (nIndex > 0 and not oList.Disposed and oList.HoverRow == nIndex) then
+                    tEvents.emit("itemHovered", {Index = nIndex});
+                end
+            end
         end
     end
 
@@ -996,7 +1007,8 @@ function List.create(oParent, tOptions, sKind)
     end);
     tEvents = _Events.attach(oList, nil, {
         "selectionChanged", "itemsChanged", "itemAdded", "itemRemoved",
-        "itemChanged", "cellChanged", "itemActivated", "multiSelectChanged", "checkChanged", "checkboxesChanged"
+        "itemChanged", "cellChanged", "itemActivated", "multiSelectChanged", "checkChanged", "checkboxesChanged",
+        "itemHovered", "itemLeft"
     });
     tChecks = _Checks.attach(oList, tEvents, tOptions, {
         keys = function()

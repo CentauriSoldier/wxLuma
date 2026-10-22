@@ -113,6 +113,58 @@ function IrisProgress.create(oParent, tOptions)
     oComponent.Value = math.max(tOptions.Min, math.min(tOptions.Max, tOptions.Value));
     local tReserve = _Reserve.attach(oComponent, tOptions, tEvents, "IrisProgress");
     local tArt = _Artwork.create(oComponent.Skin, sArtwork);
+    local tMaterials = {};
+    local sMaterialKey;
+
+    --[[!
+    @fqxn wxLuma.UI.IrisProgress.clearMaterials
+    @desc Releases owned brushes and pens on appearance/size changes and disposal.
+        Value updates reuse brushes. Borrowed skin bitmaps remain skin-owned.
+    !]]
+    local function fClearMaterials()
+        for _, oBrush in pairs(tMaterials) do
+            oBrush:delete();
+        end
+
+        tMaterials = {};
+        sMaterialKey = nil;
+    end
+
+    local tBuffers = {};
+    local nBufferSize;
+
+    --[[!
+    @fqxn wxLuma.UI.IrisProgress.clearBuffers
+    @desc Releases reusable, deselected work bitmaps on size changes and disposal.
+        Each role owns one bitmap, so dragging never grows the buffer collection.
+    !]]
+    local function fClearBuffers()
+        for _, oBitmap in pairs(tBuffers) do
+            oBitmap:delete();
+        end
+
+        tBuffers = {};
+        nBufferSize = nil;
+    end
+
+    --[[!
+    @fqxn wxLuma.UI.IrisProgress.buffer
+    @desc Returns an owned work bitmap for a raster role. Callers deselect it
+        from their temporary DC before another operation or eventual disposal.
+    !]]
+    local function fBuffer(sRole, nSize, nDepth)
+        if (nBufferSize ~= nSize) then
+            fClearBuffers();
+            nBufferSize = nSize;
+        end
+
+        if (not tBuffers[sRole]) then
+            tBuffers[sRole] = _wx.wxBitmap(nSize, nSize, nDepth or -1);
+        end
+
+        return tBuffers[sRole];
+    end
+
     local oRaster;
     local sRasterKey;
     local oPictureBitmap;
@@ -171,15 +223,15 @@ function IrisProgress.create(oParent, tOptions)
 
     --[[!
     @fqxn wxLuma.UI.IrisProgress.setValue
-    @desc Clamps finite values to the creation range. Reserve limits drawing,
-        while retaining the supplied current value. Unchanged values are silent.
+    @desc Clamps finite values to Min and the reserve-adjusted effective maximum.
+        Unchanged effective values are silent, including requests above capacity.
     @param number nValue Requested progress value.
     @param boolean|nil bNotify Emit OnChange(value, component) and valueChanged.
     @ret table oComponent This component.
     !]]
     function oComponent.setValue(nValue, bNotify)
         assert(_finite(nValue), "Iris value must be finite.");
-        nValue = math.max(oComponent.Min, math.min(oComponent.Max, nValue));
+        nValue = math.max(oComponent.Min, math.min(oComponent.getEffectiveMax(), nValue));
 
         if (not oComponent.Disposed and oComponent.Value ~= nValue) then
             local nOld = oComponent.Value;
@@ -248,7 +300,8 @@ function IrisProgress.create(oParent, tOptions)
     @fqxn wxLuma.UI.IrisProgress.raster
     @desc Builds one supersampled globe at the selected quality. Layered blade polygons form
         the aperture; native bitmap masks clip both picture and reserve to
-        the circle and opening. Cached results are reused until visual state changes.
+        the circle and opening. Monochrome work masks avoid colour-to-mask
+        conversion on every update. Cached results are reused until visual state changes.
     !]]
     local function fRaster(nDiameter)
         local bEnabled = oComponent.isEnabled();
@@ -276,7 +329,13 @@ function IrisProgress.create(oParent, tOptions)
         local bSame = bOpening == (sReserveDirection == "outward");
         local nThreshold = (bSame and nReserved or 0) + nCurrent;
         local nOpen = bOpening and nThreshold or 1 - nThreshold;
-        local tBrushes = {};
+        local sNewMaterialKey = table.concat({nSize, sState, tSettings.Appearance}, ":");
+
+        if (sMaterialKey ~= sNewMaterialKey) then
+            fClearMaterials();
+        end
+
+        local tBrushes = tMaterials;
         local tPalette = {
             Background = {24, 29, 36}, Track = {33, 42, 54},
             Fill = {tRGB.R, tRGB.G, tRGB.B}, Blade = {75, 91, 109},
@@ -284,19 +343,21 @@ function IrisProgress.create(oParent, tOptions)
         };
 
         for sPart, tChannels in pairs(tPalette) do
-            if (tSettings.Appearance == "skin") then
+            if (not tBrushes[sPart] and tSettings.Appearance == "skin") then
                 local oMaterial = sPart == "Background"
                     and oComponent.Skin.getBitmap(sArtwork.." "..sPart.." "..sState)
                     or oComponent.Skin.getBitmap(sArtwork.." "..sPart.." "..sState, nSize, nSize);
                 tBrushes[sPart] = _wx.wxBrush(oMaterial);
-            else
+            elseif (not tBrushes[sPart]) then
                 local nShade = bEnabled and 1 or 0.5;
                 tBrushes[sPart] = _wx.wxBrush(_wx.wxColour(math.floor(tChannels[1] * nShade),
                     math.floor(tChannels[2] * nShade), math.floor(tChannels[3] * nShade)));
             end
         end
 
-        local oBitmap = _wx.wxBitmap(nSize, nSize);
+        sMaterialKey = sNewMaterialKey;
+
+        local oBitmap = fBuffer("disc", nSize);
         local oDC = _wx.wxMemoryDC();
         oDC:SelectObject(oBitmap);
         oDC:SetBackground(tBrushes.Background);
@@ -330,7 +391,9 @@ function IrisProgress.create(oParent, tOptions)
             sPictureKey = sNewPictureKey;
         end
 
-        local oSeam = _wx.wxPen(tArt.color("Seam "..sState), math.max(1, math.floor(0.75 * nScale)), _wx.wxPENSTYLE_SOLID);
+        tMaterials.Seam = tMaterials.Seam or _wx.wxPen(tArt.color("Seam "..sState),
+            math.max(1, math.floor(0.75 * nScale)), _wx.wxPENSTYLE_SOLID);
+        local oSeam = tMaterials.Seam;
         oDC:SetPen(oSeam);
         local nVertexRadius = nOpen * nRadius / math.cos(nStep / 2);
         local nTwist = (1 - nOpen) * nStep * 0.7;
@@ -361,8 +424,10 @@ function IrisProgress.create(oParent, tOptions)
         end
 
         oDC:SetPen(_wx.wxTRANSPARENT_PEN);
-        local oBlack = _wx.wxBrush(_wx.wxColour(0, 0, 0));
-        local oWhite = _wx.wxBrush(_wx.wxColour(255, 255, 255));
+        tMaterials.Black = tMaterials.Black or _wx.wxBrush(_wx.wxColour(0, 0, 0));
+        local oBlack = tMaterials.Black;
+        tMaterials.White = tMaterials.White or _wx.wxBrush(_wx.wxColour(255, 255, 255));
+        local oWhite = tMaterials.White;
 
         --[[!
         @fqxn wxLuma.UI.IrisProgress.raster.maskBitmap
@@ -371,7 +436,7 @@ function IrisProgress.create(oParent, tOptions)
             the supersampled boundaries. The bitmap owns its mask.
         !]]
         local function fMaskBitmap(oTarget, nBoundary, bInvert, bCircle)
-            local oMaskBitmap = _wx.wxBitmap(nSize, nSize);
+            local oMaskBitmap = fBuffer("mask", nSize, 1);
             local oMaskDC = _wx.wxMemoryDC();
             oMaskDC:SelectObject(oMaskBitmap);
             oMaskDC:SetBackground(bInvert and oWhite or oBlack);
@@ -401,9 +466,8 @@ function IrisProgress.create(oParent, tOptions)
 
             oMaskDC:SelectObject(_wx.wxNullBitmap);
             oMaskDC:delete();
-            local oMask = _wx.wxMask(oMaskBitmap, _wx.wxColour(0, 0, 0));
+            local oMask = _wx.wxMask(oMaskBitmap);
             oTarget:SetMask(oMask);
-            oMaskBitmap:delete();
         end
 
         --[[!
@@ -412,7 +476,7 @@ function IrisProgress.create(oParent, tOptions)
             aperture mask. The final circle mask clips every leaf and image layer.
         !]]
         local function fLayer(oBrush, oSource, nBoundary, bInvert)
-            local oLayer = _wx.wxBitmap(nSize, nSize);
+            local oLayer = fBuffer("layer", nSize);
             local oLayerDC = _wx.wxMemoryDC();
             oLayerDC:SelectObject(oLayer);
             oLayerDC:SetBackground(oBrush);
@@ -426,7 +490,6 @@ function IrisProgress.create(oParent, tOptions)
             oLayerDC:delete();
             fMaskBitmap(oLayer, nBoundary, bInvert, false);
             oDC:DrawBitmap(oLayer, 0, 0, true);
-            oLayer:delete();
         end
 
         if (nOpen > 0) then
@@ -441,10 +504,9 @@ function IrisProgress.create(oParent, tOptions)
 
         oDC:SelectObject(_wx.wxNullBitmap);
         oDC:delete();
-        oSeam:delete();
 
         fMaskBitmap(oBitmap, 1, false, true);
-        local oComposed = _wx.wxBitmap(nSize, nSize);
+        local oComposed = fBuffer("composed", nSize);
         local oComposedDC = _wx.wxMemoryDC();
         oComposedDC:SelectObject(oComposed);
         oComposedDC:SetBackground(tBrushes.Background);
@@ -452,19 +514,12 @@ function IrisProgress.create(oParent, tOptions)
         oComposedDC:DrawBitmap(oBitmap, 0, 0, true);
         oComposedDC:SelectObject(_wx.wxNullBitmap);
         oComposedDC:delete();
-        for _, oBrush in pairs(tBrushes) do
-            oBrush:delete();
-        end
 
-        oBlack:delete();
-        oWhite:delete();
         local oLarge = oComposed:ConvertToImage();
-        oComposed:delete();
         local oSmall = oLarge:Scale(nDiameter, nDiameter, _wx.wxIMAGE_QUALITY_HIGH);
         local oReplacement = _wx.wxBitmap(oSmall);
         oSmall:delete();
         oLarge:delete();
-        oBitmap:delete();
 
         if (oRaster) then
             oRaster:delete();
@@ -510,7 +565,9 @@ function IrisProgress.create(oParent, tOptions)
 
     -- The parent owns the native window; this object owns decoded/cached images.
     oComponent.onDestroy = function()
+        fClearBuffers();
         fClearPicture();
+        fClearMaterials();
 
         if (oRaster) then
             oRaster:delete();

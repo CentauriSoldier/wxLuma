@@ -1,6 +1,7 @@
 local _Selection = require("wxLuma.Core.ControlSelection");
 local _Containment = require("wxLuma.Core.ControlContainment");
 local _ControlObject = require("wxLuma.Core.ControlObject");
+local _Events = require("wxLuma.Core.ControlEvents");
 local _wx            = require("wx");
 local drawFrame      = require("wxLuma.Core.ControlDrawing").frame;
 local ControlSurface = {};
@@ -310,6 +311,7 @@ function ControlSurface.create(oParent, tOptions, sKind)
     end);
     oControl:Enable(tOptions.Enabled ~= false);
     _Containment.attach(oComponent, oControl, tOptions);
+    _Events.attach(oComponent);
     return oComponent;
 end
 

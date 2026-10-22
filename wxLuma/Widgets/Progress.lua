@@ -13,7 +13,7 @@ local finite        = require("wxLuma.Core.ControlNumeric").finite;
     Reserved (capacity units, default 0), ReserveOrigin (optional independent edge),
     Enabled and OnChange. Default is horizontal from left; vertical defaults to
     bottom. Origin alone infers orientation; conflicting explicit options fail.
-@desc Determinate progress/resource meter. Value clamps to explicit range. Text
+@desc Determinate progress/resource meter. Value clamps to usable capacity. Text
       supports %v/current and %m/max. No input or automatic timing.
 !]]
 function Progress.create(oParent, tOptions)
@@ -168,15 +168,15 @@ function Progress.create(oParent, tOptions)
 
     --[[!
     @fqxn wxLuma.UI.Progress.setValue
-    @desc Validates and updates the component value, refreshes its appearance and optionally notifies
-        when the value changes.
+    @desc Clamps finite values to Min and the reserve-adjusted effective maximum.
+        Refreshes and optionally notifies only when the stored value changes.
     @param number nValue The requested value or index.
     @param boolean|nil bNotify Whether to notify after a change; omitted means silent.
     @ret table oComponent This public component object.
     !]]
     function oComponent.setValue(nValue, bNotify)
         assert(finite(nValue), "Progress value must be finite.");
-        nValue = math.max(oComponent.Min, math.min(oComponent.Max, nValue));
+        nValue = math.max(oComponent.Min, math.min(oComponent.getEffectiveMax(), nValue));
         local nOldValue = oComponent.Value;
         local bChanged = nOldValue ~= nValue;
         oComponent.Value = nValue;

@@ -14,11 +14,19 @@ if (smoke) then
     ui.Frame:Connect(timer:GetId(), wx.wxEVT_TIMER, function()
         timer:Stop();
         assert(ui.Frame:IsShown() and ui.Widgets.List and ui.Widgets.Panel, "Workbench startup incomplete.");
-        ui.Widgets.Tabs.setValue(2);
+        ui.Gallery.show("List", true);
         ui.Widgets.List.setValue(25);
-        ui.Widgets.Tabs.setValue(3);
+        ui.Gallery.show("Panel", true);
         ui.Widgets.Panel.resize(440, 200);
         assert(ui.Widgets.Panel.Content:IsShown() and not ui.Widgets.Panel.Content:IsFrozen(), "Live panel unavailable.");
+        ui.Gallery.show("SearchField", true);
+        ui.Widgets.SearchField.setValue("Smoke search");
+        ui.Widgets.ComboBox.setSelection(2);
+        ui.Gallery.show("PropertyGrid", true);
+        ui.Widgets.PropertyGrid.setValue("opacity", 0.5);
+        ui.Widgets.Accordion.setExpanded("behavior", true);
+        assert(ui.Widgets.ComboBox.getValue() == "Cautious" and ui.Widgets.PropertyGrid.getValue("opacity") == 0.5,
+            "Inspector bindings unavailable.");
         ui.Frame:Close();
     end);
     timer:Start(500, true);
@@ -27,6 +35,6 @@ wx.wxGetApp():MainLoop();
 collectgarbage("collect");
 if (smoke) then
     local file = assert(io.open(APP_PATH .. "/smoke-result.txt", "w"));
-    file:write("UI workbench startup, tab/list/panel operations, close and garbage collection passed.\n");
+    file:write("UI gallery startup, category navigation, list/panel/editor bindings, close and garbage collection passed.\n");
     file:close();
 end

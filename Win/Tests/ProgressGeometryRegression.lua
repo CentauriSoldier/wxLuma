@@ -233,7 +233,7 @@ local function run()
     _wx.wxYield();
 
     local tWorkbench = require("Tests.UI")(_wx.NULL);
-    tWorkbench.Widgets.Tabs.setValue(3);
+    tWorkbench.Gallery.show("ProgressOrigin", true);
     tWorkbench.Layout();
     _wx.wxYield();
     local oDemo = tWorkbench.Widgets.DirectionalProgress;
@@ -242,6 +242,7 @@ local function run()
         click(tWorkbench.Widgets.ProgressOrigin);
         check(oDemo.getOrigin() == sOrigin and oDemo.getValue() == 70, "Workbench cycles origins without changing value.");
     end
+    tWorkbench.Gallery.show("CircularStartAngle", true);
     click(tWorkbench.Widgets.CircularStartAngle);
     check(tWorkbench.Widgets.CircularProgress.getStartAngle() == 45
         and tWorkbench.Widgets.CircularProgress.getDirection() == "CW", "Workbench circle angle button.");
@@ -250,10 +251,11 @@ local function run()
     tWorkbench.Frame:SetClientSize(_wx.wxSize(920, 780));
     tWorkbench.Layout();
     _wx.wxYield();
-    local nBarX = oDemo.Control:GetPositionXY();
-    local nMeterX = tWorkbench.Widgets.Health.Control:GetPositionXY();
-    local nMeterWidth = tWorkbench.Widgets.Health.Control:GetSizeWH();
-    check(nBarX > nMeterX + nMeterWidth, "Minimum-size example meters do not overlap.");
+    local nUnused, nDirectionY = oDemo.Control:GetPositionXY();
+    local nLoadingY; nUnused, nLoadingY = tWorkbench.Widgets.Progress.Control:GetPositionXY();
+    local nLoadingHeight; nUnused, nLoadingHeight = tWorkbench.Widgets.Progress.Control:GetSizeWH();
+    check(oDemo.Control:GetParent():GetId() == tWorkbench.Widgets.Progress.Control:GetParent():GetId()
+        and nDirectionY >= nLoadingY + nLoadingHeight, "Meter variants share a section without overlapping.");
     tWorkbench.Frame:Close();
     _wx.wxYield();
 end

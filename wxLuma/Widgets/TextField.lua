@@ -1,4 +1,5 @@
 local _wx           = require("wx");
+local _Events       = require("wxLuma.Core.ControlEvents");
 local TextField     = {};
 local createSurface = require("wxLuma.Core.ControlSurface").create;
 
@@ -99,6 +100,8 @@ function TextField.create(oParent, tOptions)
         end
     end;
     oComponent.setEnabled(tOptions.Enabled ~= false);
+    -- Native editor interaction belongs to this field's public subscriptions.
+    _Events.attach(oComponent, {oText});
     return oComponent;
 end
 

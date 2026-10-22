@@ -4,84 +4,99 @@ local loadwxLuma = require("wxLuma");
 local wxLuma = loadwxLuma();
 local Window = wxLuma.Window;
 local Controls = wxLuma.Controls;
+local DemoGallery = require("Win.Tests.DemoGallery");
 
 return function(oParent)
-    local oFrame = wx.wxFrame(oParent, wx.wxID_ANY, "UI Test - Workbench", wx.wxDefaultPosition, wx.wxSize(1120, 900));
+    -- wxLua requires a native null parent when launching this demo standalone.
+    local oFrame = wx.wxFrame(oParent or wx.NULL, wx.wxID_ANY, "wxLuma - Control Gallery", wx.wxDefaultPosition, wx.wxSize(1120, 900));
     oFrame:SetMinClientSize(wx.wxSize(920, 780));
     local tSkin = Controls.loadSkin();
     local tWidgets, tInteractive, tTips = {}, {}, {};
-    local sMessage = "Sample values only. Choose a tab; Tab moves focus.";
+    local sMessage = "Choose a category. Each example includes usage and API guidance. Tab moves focus.";
     local bEnabled, bDisposed = true, false;
+    -- Resolve shared demo assets from the framework location, independent of cwd.
+    local sSoundPath = wxLuma.Path.."/../Sound/";
+    local oHoverSound = wx.wxSound(sSoundPath.."Hover.wav");
+    local oClickSound = wx.wxSound(sSoundPath.."Click.wav");
+    assert(oHoverSound:IsOk() and oClickSound:IsOk(), "Cannot load demo sounds from "..sSoundPath);
+    local tItemHover = {Tabs = true, ExampleTabs = true, List = true, ListEx = true,
+        CheckListEx = true, TreeEx = true, Toolbar = true, ContextMenu = true, RadialMenu = true,
+        MenuBar = true, ComboBox = true, LogViewer = "entryHovered", ActionLog = "entryHovered"};
+
+    --[[!
+    @fqxn wxLuma.Tests.UI.fWireAudio
+    @desc Plays brief asynchronous feedback for enabled controls. Item controls
+        sound on row/item transitions; ordinary controls sound on pointer entry.
+        Both physical mouse buttons share a cue played immediately on press.
+    @param string sKey Demo widget name.
+    @param table tWidget Public component receiving interaction notifications.
+    !]]
+    local function fWireAudio(sKey, tWidget)
+        local function fPlay(oSound, tEvent)
+            if (not bDisposed and not tWidget.Disposed and tWidget.isEnabled()
+                and (not tEvent.Child or tEvent.Child.isEnabled())) then
+                oSound:Play(wx.wxSOUND_ASYNC);
+            end
+        end
+
+        local sHoverEvent = type(tItemHover[sKey]) == "string" and tItemHover[sKey] or tItemHover[sKey] and "itemHovered" or "pointerEnter";
+        tWidget.on(sHoverEvent, function(oSource, tEvent) fPlay(oHoverSound, tEvent); end);
+        tWidget.on("leftDown", function(oSource, tEvent) fPlay(oClickSound, tEvent); end);
+        tWidget.on("rightDown", function(oSource, tEvent) fPlay(oClickSound, tEvent); end);
+    end
+
     local tWindow;
+    local oGallery;
     local function fMessage(sText)
         if (bDisposed) then return; end
         sMessage = sText;
         local tContent = tWindow.getGeometry().Content;
         tWindow.Control:RefreshRect(wx.wxRect(tContent.x, tContent.y + tContent.height - 28, tContent.width, 28), false);
     end
-    tWindow = Window.create(oFrame, {Title = "UI TEST", Subtitle = "UI WORKBENCH  /  COMMON CONTROLS", PaintContent = function(oDC, tContent)
+    tWindow = Window.create(oFrame, {Title = "wxLuma", Subtitle = "CONTROL GALLERY  /  DOCUMENTED EXAMPLES", PaintContent = function(oDC, tContent)
         tSkin.text(oDC, sMessage, tContent.x, tContent.y + tContent.height - 26, true);
     end});
     local function fOptions(tOptions) tOptions.Skin = tSkin; return tOptions; end
     local function fRemember(sKey, tWidget)
+        fWireAudio(sKey, tWidget);
         tWidgets[sKey] = tWidget; tInteractive[#tInteractive + 1] = tWidget; return tWidget;
     end
     local function fChanged(sName) return function(vValue) fMessage(sName .. ": " .. tostring(vValue)); end; end
+    --[[!
+    @fqxn wxLuma.Tests.UI.fDemoParent
+    @desc Selects the final documented parent before creation so native lifetime
+        ownership and popup containment include the category's scroll viewport.
+    !]]
+    local function fDemoParent(sKey, oFallback) return oGallery.parent(sKey, oFallback); end
     local tTabs = Controls.tabs(tWindow.Control, fOptions({
         LayoutMode = "wrap",
-        Items = {"Original controls", "Lists & text", "Resources & panel", "Display", "Containers", "Data", "Orb meters", "Menus", "Editors", "Tools", "Tabs", "TreeEx"},
+        Items = DemoGallery.getTitles(),
         OnChange = function(nValue)
             fMessage("Tab: "..nValue);
 
-            -- Selecting the container demonstration makes its navigation keys
-            -- immediately usable instead of leaving focus on the tab strip.
-            if (nValue == 5 and tWidgets.ScrollContainer) then
-                tWidgets.ScrollContainer.Control:SetFocus();
-            end
+            if (oGallery) then oGallery.focusCategory(nValue); end
         end
     }));
     tWidgets.Tabs = tTabs;
+    fWireAudio("Tabs", tTabs);
+    oGallery = DemoGallery.create(tTabs, tSkin);
     local oOriginal, oInput, oResources = tTabs.Pages[1], tTabs.Pages[2], tTabs.Pages[3];
     local function fLabel(oParent, sText, nX, nY)
         local oLabel = wx.wxStaticText(oParent, wx.wxID_ANY, sText, wx.wxPoint(nX, nY));
         oLabel:SetFont(tSkin.Font); oLabel:SetForegroundColour(wx.wxColour(177, 193, 210)); return oLabel;
     end
-    oOriginal:SetBackgroundStyle(wx.wxBG_STYLE_PAINT);
-    oOriginal:Connect(wx.wxEVT_PAINT, function()
-        local oDC = wx.wxAutoBufferedPaintDC(oOriginal);
-        if (bDisposed) then oDC:delete(); return; end
-        local nW = oOriginal:GetClientSizeWH();
-        local oBrush = wx.wxBrush(wx.wxColour(24, 29, 36)); oDC:SetBackground(oBrush); oDC:Clear();
-        tSkin.text(oDC, "STATE GALLERY", 12, 12, true);
-        local nColumn = math.floor((nW - 174) / 4);
-        for nIndex, sState in ipairs({"Normal", "Hover", "Pressed", "Disabled"}) do
-            tSkin.text(oDC, sState, 172 + (nIndex - 1) * nColumn, 42, true);
-            local nRow = 0;
-            for _, sFamily in ipairs({"Checkbox", "Radio"}) do for _, sValue in ipairs({"Off", "On"}) do
-                local nY = 68 + nRow * 34;
-                if (nIndex == 1) then tSkin.text(oDC, sFamily .. " / " .. sValue, 12, nY + 7, true); end
-                tSkin.drawOpaque(oDC, sFamily .. " " .. sValue .. " " .. sState, 186 + (nIndex - 1) * nColumn, nY);
-                nRow = nRow + 1;
-            end end
-        end
-        tSkin.text(oDC, "INTERACTIVE CONTROLS", 12, 222, true);
-        tSkin.text(oDC, "Horizontal slider", 12, 354, true);
-        tSkin.text(oDC, "Vertical", math.floor(nW * 0.45), 354, true);
-        tSkin.text(oDC, "Integer spinner", math.floor(nW * 0.66), 354, true);
-        oBrush:delete(); oDC:delete();
-    end);
-    fRemember("Checkbox", Controls.checkbox(oOriginal, fOptions({Text = "Enable ambient sound", OnChange = fChanged("Sound")})));
-    fRemember("DisabledCheckbox", Controls.checkbox(oOriginal, fOptions({Text = "Selected, disabled", Selected = true, Enabled = false})));
+    fRemember("Checkbox", Controls.checkbox(fDemoParent("Checkbox", oOriginal), fOptions({Text = "Enable sample option", OnChange = fChanged("Checkbox")})));
+    fRemember("DisabledCheckbox", Controls.checkbox(fDemoParent("DisabledCheckbox", oOriginal), fOptions({Text = "Selected, disabled", Selected = true, Enabled = false})));
     local tGroup = Controls.radioGroup();
     for nIndex, sText in ipairs({"Balanced", "Cautious", "Unavailable"}) do
-        fRemember("Radio" .. nIndex, Controls.radio(oOriginal, fOptions({Text = sText, Group = tGroup, Value = sText,
+        fRemember("Radio" .. nIndex, Controls.radio(fDemoParent("Radio"..nIndex, oOriginal), fOptions({Text = sText, Group = tGroup, Value = sText,
             Selected = nIndex == 1, Enabled = nIndex ~= 3, OnChange = fChanged("Radio")})));
     end
-    fRemember("Slider", Controls.slider(oOriginal, fOptions({Min = 0, Max = 100, Step = 5, Value = 40, OnChange = fChanged("Horizontal")})));
-    fRemember("VerticalSlider", Controls.slider(oOriginal, fOptions({Min = 0, Max = 100, Step = 5, Value = 65, Vertical = true, OnChange = fChanged("Vertical")})));
-    fRemember("Spinner", Controls.spinner(oOriginal, fOptions({Min = 0, Max = 20, Step = 1, Value = 4, OnChange = fChanged("Spinner")})));
-    fRemember("Button", Controls.button(oOriginal, fOptions({Text = "Apply sample", OnClick = function() fMessage("Sample applied. Sample action completed."); end})));
-    local tToggle = Controls.button(oOriginal, fOptions({Text = "Toggle controls", OnClick = function()
+    fRemember("Slider", Controls.slider(fDemoParent("Slider", oOriginal), fOptions({Min = 0, Max = 100, Step = 5, Value = 40, OnChange = fChanged("Horizontal")})));
+    fRemember("VerticalSlider", Controls.slider(fDemoParent("VerticalSlider", oOriginal), fOptions({Min = 0, Max = 100, Step = 5, Value = 65, Vertical = true, OnChange = fChanged("Vertical")})));
+    fRemember("Spinner", Controls.spinner(fDemoParent("Spinner", oOriginal), fOptions({Min = 0, Max = 20, Step = 1, Value = 4, OnChange = fChanged("Spinner")})));
+    fRemember("Button", Controls.button(fDemoParent("Button", oOriginal), fOptions({Text = "Apply sample", OnClick = function() fMessage("Sample applied. Sample action completed."); end})));
+    local tToggle = Controls.button(fDemoParent("Toggle", oOriginal), fOptions({Text = "Toggle controls", OnClick = function()
         bEnabled = not bEnabled;
         for _, tWidget in ipairs(tInteractive) do
             -- Removed tab pages dispose their sample children through native
@@ -94,38 +109,31 @@ return function(oParent)
         tWidgets.DisabledCheckbox.setEnabled(false); tWidgets.Radio3.setEnabled(false); tWidgets.DisabledText.setEnabled(false);
         fMessage(bEnabled and "Controls enabled." or "Controls disabled; selected values remain visible.");
     end})); tWidgets.Toggle = tToggle;
+    fWireAudio("Toggle", tToggle);
 
-    fLabel(oInput, "SELECTABLE LIST  /  10,000 sample rows", 16, 14);
-    fLabel(oInput, "DROPDOWN  /  preview with arrows, Enter commits", 354, 14);
     local tItems = {};
 
     for nIndex = 1, 10000 do
         tItems[nIndex] = string.format("Sample entry %05d", nIndex);
     end
-    fRemember("List", Controls.list(oInput, fOptions({Items = tItems, Value = 1, OnChange = fChanged("List row")})));
-    fRemember("Dropdown", Controls.dropdown(oInput, fOptions({Items = tItems, Value = 5, Rows = 8, OnChange = fChanged("Dropdown row")})));
-    fLabel(oInput, "TEXT FIELD  /  native selection, clipboard and editing", 354, 104);
-    fRemember("Text", Controls.textfield(oInput, fOptions({Value = "Editable sample", Hint = "Type here", OnChange = fChanged("Text"), OnEnter = fChanged("Enter")})));
-    fLabel(oInput, "DISABLED TEXT", 354, 194);
-    fRemember("DisabledText", Controls.textfield(oInput, fOptions({Value = "Unavailable sample", Enabled = false})));
-    fLabel(oInput, "HORIZONTAL SCROLLBAR  /  offset 0-900", 354, 284);
-    fRemember("Scrollbar", Controls.scrollbar(oInput, fOptions({Min = 0, Max = 900, Page = 100, Value = 0, Vertical = false, OnChange = fChanged("Offset")})));
-    fLabel(oInput, "Hover or focus the text field for a skinned tooltip.", 354, 382);
-    fRemember("ListMultiSelect", Controls.checkbox(oInput, fOptions({
+    fRemember("List", Controls.list(fDemoParent("List", oInput), fOptions({Items = tItems, Value = 1, OnChange = fChanged("List row")})));
+    fRemember("Dropdown", Controls.dropdown(fDemoParent("Dropdown", oInput), fOptions({Items = tItems, Value = 5, Rows = 8, OnChange = fChanged("Dropdown row")})));
+    fRemember("Text", Controls.textfield(fDemoParent("Text", oInput), fOptions({Value = "Editable sample", Hint = "Type here", OnChange = fChanged("Text"), OnEnter = fChanged("Enter")})));
+    fRemember("DisabledText", Controls.textfield(fDemoParent("DisabledText", oInput), fOptions({Value = "Unavailable sample", Enabled = false})));
+    fRemember("Scrollbar", Controls.scrollbar(fDemoParent("Scrollbar", oInput), fOptions({Min = 0, Max = 900, Page = 100, Value = 0, Vertical = false, OnChange = fChanged("Offset")})));
+    fRemember("ListMultiSelect", Controls.checkbox(fDemoParent("ListMultiSelect", oInput), fOptions({
         Text = "List multi-select",
         OnChange = function(bEnabled)
             tWidgets.List.setMultiSelectEnabled(bEnabled, true);
         end
     })));
-    fLabel(oInput, "Multi-select: Shift selects a range.\nCtrl/Cmd toggles rows; Ctrl/Cmd+A selects all.", 354, 480);
     tTips[1] = Controls.tooltip(tWidgets.Text.TextControl, fOptions({Text = "Native text editing inside the common skin.\nEnter reports the sample; no data is saved."}));
     tTips[2] = Controls.tooltip(tWidgets.List.Control, fOptions({Text = "Wheel or drag the scrollbar.\nArrows, Page Up/Down, Home/End select rows."}));
 
-    fLabel(oResources, "RESOURCE METERS  /  linear and circular progress", 16, 14);
-    fRemember("Health", Controls.progress(oResources, fOptions({Min = 0, Max = 100, Value = 70, Text = "Health  %v / %m", Colour = {R = 107, G = 142, B = 91}})));
-    fRemember("Mana", Controls.progress(oResources, fOptions({Min = 0, Max = 100, Value = 45, Text = "Mana  %v / %m", Colour = {R = 77, G = 120, B = 169}})));
-    fRemember("Progress", Controls.progress(oResources, fOptions({Min = 0, Max = 100, Value = 25, Text = "Loading  %v%", Colour = {R = 150, G = 128, B = 83}})));
-    fRemember("DirectionalProgress", Controls.progress(oResources, fOptions({
+    fRemember("Health", Controls.progress(fDemoParent("Health", oResources), fOptions({Min = 0, Max = 100, Value = 70, Text = "Health  %v / %m", Colour = {R = 107, G = 142, B = 91}})));
+    fRemember("Mana", Controls.progress(fDemoParent("Mana", oResources), fOptions({Min = 0, Max = 100, Value = 45, Text = "Mana  %v / %m", Colour = {R = 77, G = 120, B = 169}})));
+    fRemember("Progress", Controls.progress(fDemoParent("Progress", oResources), fOptions({Min = 0, Max = 100, Value = 25, Text = "Loading  %v%", Colour = {R = 150, G = 128, B = 83}})));
+    fRemember("DirectionalProgress", Controls.progress(fDemoParent("DirectionalProgress", oResources), fOptions({
         Min = 0,
         Max = 100,
         Value = 70,
@@ -138,16 +146,9 @@ return function(oParent)
     -- Changing direction changes only fill policy. The example chooses suitable
     -- dimensions explicitly; the reusable progress object never resizes itself.
     local function fDirectionalLayout()
-        local nWidth = oResources:GetClientSizeWH();
-
-        if (tWidgets.DirectionalProgress.getOrientation() == "vertical") then
-            tWidgets.DirectionalProgress.layout(nWidth - 355, 46, 54, 126);
-        else
-            tWidgets.DirectionalProgress.layout(nWidth - 410, 90, 160, 40);
-        end
+        oGallery.layoutCard("DirectionalProgress");
     end
-
-    fRemember("ProgressOrigin", Controls.button(oResources, fOptions({
+    fRemember("ProgressOrigin", Controls.button(fDemoParent("ProgressOrigin", oResources), fOptions({
         Text = "Fill from: bottom",
         OnClick = function()
             local tNext = {bottom = "top", top = "right", right = "left", left = "bottom"};
@@ -159,14 +160,14 @@ return function(oParent)
             fMessage("Progress fills from "..sOrigin);
         end
     })));
-    fRemember("CircularProgress", Controls.circularProgress(oResources, fOptions({
+    fRemember("CircularProgress", Controls.circularProgress(fDemoParent("CircularProgress", oResources), fOptions({
         Min = 0,
         Max = 100,
         Value = 25,
         Direction = "CW",
         Text = "%v%"
     })));
-    fRemember("CircularDirection", Controls.button(oResources, fOptions({
+    fRemember("CircularDirection", Controls.button(fDemoParent("CircularDirection", oResources), fOptions({
         Text = "Direction: CW",
         OnClick = function()
             local oProgress = tWidgets.CircularProgress;
@@ -177,7 +178,7 @@ return function(oParent)
             fMessage("Circular progress direction: "..sDirection);
         end
     })));
-    fRemember("CircularStartAngle", Controls.button(oResources, fOptions({
+    fRemember("CircularStartAngle", Controls.button(fDemoParent("CircularStartAngle", oResources), fOptions({
         Text = "Circle start: 0 degrees",
         OnClick = function()
             local nAngle = (tWidgets.CircularProgress.getStartAngle() + 45) % 360;
@@ -187,11 +188,10 @@ return function(oParent)
             fMessage("Circle starting angle: "..nAngle.." degrees");
         end
     })));
-    fLabel(oResources, "0 top / 90 right / 180 bottom / 270 left", 280, 338);
-    fRemember("MeterSlider", Controls.slider(oResources, fOptions({Min = 0, Max = 100, Step = 1, Value = 70, OnChange = function(nValue)
+    fRemember("MeterSlider", Controls.slider(fDemoParent("MeterSlider", oResources), fOptions({Min = 0, Max = 100, Step = 1, Value = 70, OnChange = function(nValue)
         for _, sKey in ipairs({"Health", "Mana", "Progress", "DirectionalProgress", "CircularProgress"}) do tWidgets[sKey].setValue(nValue); end; fMessage("Sample meters: " .. nValue);
     end})));
-    fRemember("ProgressSkin", Controls.checkbox(oResources, fOptions({
+    fRemember("ProgressSkin", Controls.checkbox(fDemoParent("ProgressSkin", oResources), fOptions({
         Text = "Skin linear meters",
         OnChange = function(bEnabled)
             for _, sKey in ipairs({"Health", "Mana", "Progress"}) do
@@ -199,14 +199,14 @@ return function(oParent)
             end
         end
     })));
-    fRemember("CircularProgressSkin", Controls.checkbox(oResources, fOptions({
+    fRemember("CircularProgressSkin", Controls.checkbox(fDemoParent("CircularProgressSkin", oResources), fOptions({
         Text = "Skin circular meter",
         Selected = true,
         OnChange = function(bEnabled)
             tWidgets.CircularProgress.setAppearance(bEnabled and "skin" or "colour", true);
         end
     })));
-    fRemember("CircularPie", Controls.checkbox(oResources, fOptions({
+    fRemember("CircularPie", Controls.checkbox(fDemoParent("CircularPie", oResources), fOptions({
         Text = "Circular meter: solid pie",
         Selected = false,
         OnChange = function(bSelected)
@@ -217,7 +217,7 @@ return function(oParent)
             end
         end
     })));
-    fRemember("Panel", Controls.panel(oResources, fOptions({Text = "RESIZABLE EMBEDDED PANEL", MinWidth = 260, MinHeight = 200,
+    fRemember("Panel", Controls.panel(fDemoParent("Panel", oResources), fOptions({Text = "RESIZABLE EMBEDDED PANEL", MinWidth = 260, MinHeight = 200,
         OnResize = function(nW, nH) fMessage("Embedded panel: " .. nW .. " x " .. nH); end})));
     local tPanel = tWidgets.Panel;
     fLabel(tPanel.Content, "Drag the bottom-right grip.\nFocus the border and use arrow keys.\nShift + arrows: 10 pixels. Escape cancels drag.", 8, 6);
@@ -230,7 +230,7 @@ return function(oParent)
         Containment = tPanel.Content
     }));
     local bPanelTooltipBoundary = true;
-    fRemember("TooltipBoundary", Controls.button(oResources, fOptions({
+    fRemember("TooltipBoundary", Controls.button(fDemoParent("TooltipBoundary", oResources), fOptions({
         Text = "Tooltip: panel / window",
         OnClick = function()
             bPanelTooltipBoundary = not bPanelTooltipBoundary;
@@ -238,7 +238,7 @@ return function(oParent)
             fMessage(bPanelTooltipBoundary and "Panel tooltip contained by panel content." or "Panel tooltip contained by window client area.");
         end
     })));
-    fRemember("TooltipOverflow", Controls.button(oResources, fOptions({
+    fRemember("TooltipOverflow", Controls.button(fDemoParent("TooltipOverflow", oResources), fOptions({
         Text = "Oversized: hide / allow",
         OnClick = function()
             local sNext = tTips[3].getContainmentOverflow() == "hide" and "allow" or "hide";
@@ -246,15 +246,14 @@ return function(oParent)
             fMessage("Panel tooltip oversized policy: "..sNext..". Size remains unchanged.");
         end
     })));
-    local tPanelToggle = Controls.button(oResources, fOptions({Text = "Hide / show panel", OnClick = function() tPanel.show(not tPanel.Control:IsShown()); fMessage(tPanel.Control:IsShown() and "Panel shown." or "Panel hidden."); end}));
+    local tPanelToggle = Controls.button(fDemoParent("PanelToggle", oResources), fOptions({Text = "Hide / show panel", OnClick = function() tPanel.show(not tPanel.Control:IsShown()); fMessage(tPanel.Control:IsShown() and "Panel shown." or "Panel hidden."); end}));
     tWidgets.PanelToggle = tPanelToggle;
+    fWireAudio("PanelToggle", tPanelToggle);
 
-    -- Display samples use the same public objects and shared skin as applications.
-    -- Keep the original three page indices stable for existing integration tests.
+    -- Factories receive their gallery parents while stable widget keys remain
+    -- available to callbacks, application examples and regression fixtures.
     local oOrbs = tTabs.Pages[7];
-    fRemember("GlobeHeading", Controls.label(oOrbs, fOptions({Value = "GLOBE / straight liquid level"})));
-    fRemember("RadialHeading", Controls.label(oOrbs, fOptions({Value = "RADIAL / concentric fill"})));
-    fRemember("GlobeProgress", Controls.globeProgress(oOrbs, fOptions({
+    fRemember("GlobeProgress", Controls.globeProgress(fDemoParent("GlobeProgress", oOrbs), fOptions({
         Min = 0,
         Max = 100,
         Value = 65,
@@ -263,7 +262,7 @@ return function(oParent)
         Text = "%v%",
         OnChange = fChanged("Globe progress")
     })));
-    fRemember("RadialProgress", Controls.radialProgress(oOrbs, fOptions({
+    fRemember("RadialProgress", Controls.radialProgress(fDemoParent("RadialProgress", oOrbs), fOptions({
         Min = 0,
         Max = 100,
         Value = 65,
@@ -272,8 +271,7 @@ return function(oParent)
         Text = "%v%",
         OnChange = fChanged("Radial progress")
     })));
-    fRemember("IrisHeading", Controls.label(oOrbs, fOptions({Value = "IRIS / aperture blades"})));
-    fRemember("IrisProgress", Controls.irisProgress(oOrbs, fOptions({
+    fRemember("IrisProgress", Controls.irisProgress(fDemoParent("IrisProgress", oOrbs), fOptions({
         Min = 0,
         Max = 100,
         Value = 65,
@@ -282,7 +280,7 @@ return function(oParent)
         Supersampling = 2,
         OnChange = fChanged("Iris progress")
     })));
-    fRemember("IrisDirection", Controls.button(oOrbs, fOptions({
+    fRemember("IrisDirection", Controls.button(fDemoParent("IrisDirection", oOrbs), fOptions({
         Text = "Iris: opening",
         OnClick = function()
             local sDirection = tWidgets.IrisProgress.getDirection() == "opening" and "closing" or "opening";
@@ -291,7 +289,7 @@ return function(oParent)
             tWidgets.IrisDirection.refresh();
         end
     })));
-    fRemember("IrisBlades", Controls.button(oOrbs, fOptions({
+    fRemember("IrisBlades", Controls.button(fDemoParent("IrisBlades", oOrbs), fOptions({
         Text = "Blades: 6 / rotate",
         OnClick = function()
             local nCount = tWidgets.IrisProgress.getBladeCount() % 10 + 3;
@@ -301,7 +299,7 @@ return function(oParent)
             tWidgets.IrisBlades.refresh();
         end
     })));
-    fRemember("IrisPicture", Controls.checkbox(oOrbs, fOptions({
+    fRemember("IrisPicture", Controls.checkbox(fDemoParent("IrisPicture", oOrbs), fOptions({
         Text = "Clipped iris picture",
         Selected = true,
         OnChange = function(bSelected)
@@ -309,7 +307,7 @@ return function(oParent)
                 and wxLuma.Config.ImagePath.."/Menu/Command Shield.png" or nil, true);
         end
     })));
-    fRemember("GlobeOrigin", Controls.button(oOrbs, fOptions({
+    fRemember("GlobeOrigin", Controls.button(fDemoParent("GlobeOrigin", oOrbs), fOptions({
         Text = "Fill from: bottom",
         OnClick = function()
             local tNext = {bottom = "top", top = "right", right = "left", left = "bottom"};
@@ -320,7 +318,7 @@ return function(oParent)
             fMessage("Globe fills from "..sOrigin);
         end
     })));
-    fRemember("RadialDirection", Controls.button(oOrbs, fOptions({
+    fRemember("RadialDirection", Controls.button(fDemoParent("RadialDirection", oOrbs), fOptions({
         Text = "Direction: outward",
         OnClick = function()
             local sDirection = tWidgets.RadialProgress.getDirection() == "outward" and "inward" or "outward";
@@ -330,21 +328,21 @@ return function(oParent)
             fMessage("Radial fill: "..sDirection);
         end
     })));
-    fRemember("GlobeSkin", Controls.checkbox(oOrbs, fOptions({
+    fRemember("GlobeSkin", Controls.checkbox(fDemoParent("GlobeSkin", oOrbs), fOptions({
         Text = "Skin globe",
         Selected = true,
         OnChange = function(bEnabled)
             tWidgets.GlobeProgress.setAppearance(bEnabled and "skin" or "colour", true);
         end
     })));
-    fRemember("RadialSkin", Controls.checkbox(oOrbs, fOptions({
+    fRemember("RadialSkin", Controls.checkbox(fDemoParent("RadialSkin", oOrbs), fOptions({
         Text = "Skin radial meter",
         Selected = true,
         OnChange = function(bEnabled)
             tWidgets.RadialProgress.setAppearance(bEnabled and "skin" or "colour", true);
         end
     })));
-    fRemember("OrbValue", Controls.slider(oOrbs, fOptions({
+    fRemember("OrbValue", Controls.slider(fDemoParent("OrbValue", oOrbs), fOptions({
         Min = 0,
         Max = 100,
         Step = 1,
@@ -353,10 +351,25 @@ return function(oParent)
             tWidgets.GlobeProgress.setValue(nValue, true);
             tWidgets.RadialProgress.setValue(nValue, true);
             tWidgets.IrisProgress.setValue(nValue, true);
-            fMessage("Orb meters: "..nValue.."%");
+            fMessage("Orb meters: "..tWidgets.GlobeProgress.getValue().." / "..tWidgets.GlobeProgress.getEffectiveMax()
+                .." usable ("..tWidgets.GlobeProgress.getReserved().." / "..tWidgets.GlobeProgress.getMax().." reserved)");
         end
     })));
-    fRemember("OrbReserved", Controls.slider(oOrbs, fOptions({
+
+    --[[!
+    @fqxn wxLuma.Tests.UI.orbValue.setValue
+    @desc Makes pointer, keyboard and programmatic demo input stop at the meters'
+        actual usable maximum. Keep the full 0..100 track so the stopped thumb
+        shows how much of the original capacity is unavailable.
+    !]]
+    local fSetOrbValue = tWidgets.OrbValue.setValue;
+    tWidgets.OrbValue.setValue = function(nValue, bNotify)
+        assert(type(nValue) == "number" and nValue == nValue and math.abs(nValue) < math.huge,
+            "Orb value must be finite.");
+        return fSetOrbValue(math.min(nValue, tWidgets.GlobeProgress.getEffectiveMax()), bNotify);
+    end;
+
+    fRemember("OrbReserved", Controls.slider(fDemoParent("OrbReserved", oOrbs), fOptions({
         Min = 0,
         Max = 100,
         Step = 1,
@@ -366,10 +379,14 @@ return function(oParent)
                 tWidgets[sKey].setReserved(nValue, true);
             end
 
-            fMessage("Reserved capacity: "..nValue.." / 100");
+            -- Objects enforce the limit; reflect their accepted current in the
+            -- input without issuing a second set of value-change notifications.
+            tWidgets.OrbValue.setValue(tWidgets.GlobeProgress.getValue());
+            fMessage("Orb meters: "..tWidgets.GlobeProgress.getValue().." / "..tWidgets.GlobeProgress.getEffectiveMax()
+                .." usable ("..nValue.." / "..tWidgets.GlobeProgress.getMax().." reserved)");
         end
     })));
-    fRemember("GlobeReserveOrigin", Controls.button(oOrbs, fOptions({
+    fRemember("GlobeReserveOrigin", Controls.button(fDemoParent("GlobeReserveOrigin", oOrbs), fOptions({
         Text = "Reserve edge: automatic",
         OnClick = function()
             local tNext = {left = "right", right = "top", top = "bottom"};
@@ -380,7 +397,7 @@ return function(oParent)
             tWidgets.GlobeReserveOrigin.refresh();
         end
     })));
-    fRemember("RadialReserveDirection", Controls.button(oOrbs, fOptions({
+    fRemember("RadialReserveDirection", Controls.button(fDemoParent("RadialReserveDirection", oOrbs), fOptions({
         Text = "Reserve: automatic",
         OnClick = function()
             local sOld = tWidgets.RadialProgress.getReserveDirection();
@@ -397,31 +414,35 @@ return function(oParent)
             tWidgets.RadialReserveDirection.refresh();
         end
     })));
-    fRemember("OrbHelp", Controls.label(oOrbs, fOptions({
-        Wrap = true,
-        Value = "First slider: current. Second slider: reserve (purple). Reserve buttons change its independent direction.\n"
-            .."Globe: progress controls straight level distance through the circle.\n"
-            .."Radial measures distance along the usable radius. Current never overlaps the reserve."
-    })));
 
     local oDisplay, oContainers = tTabs.Pages[4], tTabs.Pages[5];
     local pSampleImage = wxLuma.Config.ImagePath.."/Window/Window Ornament Upper Left.png";
-    fRemember("Label", Controls.label(oDisplay, fOptions({
+    fRemember("Label", Controls.label(fDemoParent("Label", oDisplay), fOptions({
         Value = "LABEL / hover, left click, right click and keyboard events",
         VerticalAlign = "center"
     })));
-    fRemember("WrappedLabel", Controls.label(oDisplay, fOptions({
+    fRemember("WrappedLabel", Controls.label(fDemoParent("WrappedLabel", oDisplay), fOptions({
         Value = "This is a wxLuma Label. Text wraps to the available width and uses the shared skin font.\n\nResize the workbench to see wrapping change. Click the image button to cycle its scaling mode.",
         Wrap = true
     })));
-    fRemember("AlignedLabel", Controls.label(oDisplay, fOptions({
+    fRemember("AlignedLabel", Controls.label(fDemoParent("AlignedLabel", oDisplay), fOptions({
         Value = "Centered horizontally and vertically",
         Align = "center", VerticalAlign = "center", Wrap = true
     })));
-    fRemember("Image", Controls.image(oDisplay, fOptions({
+    fRemember("Image", Controls.image(fDemoParent("Image", oDisplay), fOptions({
         Value = pSampleImage, ScaleMode = "contain"
     })));
-    fRemember("ImageMode", Controls.button(oDisplay, fOptions({
+    fRemember("ImageButton", Controls.imageButton(fDemoParent("ImageButton", oDisplay), fOptions({
+        Image = wxLuma.Config.ImagePath.."/Menu/Command Shield.png", Text = "Image action",
+        OnClick = function() fMessage("The image button action works."); end
+    })));
+    fRemember("TooltipTarget", Controls.button(fDemoParent("TooltipTarget", oDisplay), fOptions({
+        Text = "Hover or focus for help", OnClick = function() fMessage("Hover or focus this target to show its tooltip."); end
+    })));
+    tTips[#tTips + 1] = Controls.tooltip(tWidgets.TooltipTarget.Control, fOptions({
+        Text = "Skinned target help.\nTooltips preserve natural size and respect containment."
+    }));
+    fRemember("ImageMode", Controls.button(fDemoParent("ImageMode", oDisplay), fOptions({
         Text = "Cycle image scaling",
         OnClick = function()
             local tModes = {"contain", "cover", "stretch", "native"};
@@ -449,7 +470,7 @@ return function(oParent)
         end
     end
 
-    fRemember("ScrollContainer", Controls.scrollContainer(oContainers, fOptions({
+    fRemember("ScrollContainer", Controls.scrollContainer(fDemoParent("ScrollContainer", oContainers), fOptions({
         ContentWidth = 1200, ContentHeight = 1000,
         OnChange = function(tValue)
             fMessage("Scroll offset: "..tValue.X..", "..tValue.Y);
@@ -476,14 +497,14 @@ return function(oParent)
         Value = "END OF CONTENT / both axes are scrollable", Wrap = true
     })));
     tWidgets.ScrollEndLabel.layout(700, 940, 460, 50);
-    fRemember("ScrollReset", Controls.button(oContainers, fOptions({
+    fRemember("ScrollReset", Controls.button(fDemoParent("ScrollReset", oContainers), fOptions({
         Text = "Scroll to origin",
         OnClick = function()
             tWidgets.ScrollContainer.scrollTo(0, 0, true);
             tWidgets.ScrollContainer.Control:SetFocus();
         end
     })));
-    fRemember("ScrollEnd", Controls.button(oContainers, fOptions({
+    fRemember("ScrollEnd", Controls.button(fDemoParent("ScrollEnd", oContainers), fOptions({
         Text = "Scroll to end",
         OnClick = function()
             tWidgets.ScrollContainer.scrollTo(1200, 1000, true);
@@ -501,7 +522,7 @@ return function(oParent)
     -- Data controls expose stable IDs rather than tying application state to
     -- captions or current display order. Both demos support live add/remove.
     local oData = tTabs.Pages[6];
-    fRemember("Tree", Controls.tree(oData, fOptions({
+    fRemember("Tree", Controls.tree(fDemoParent("Tree", oData), fOptions({
         Items = {
             {Id = "scene", Text = "Scene", Expanded = true, Children = {
                 {Id = "actors", Text = "Actors", Expanded = true, Children = {
@@ -526,20 +547,18 @@ return function(oParent)
         };
     end
 
-    fRemember("Table", Controls.table(oData, fOptions({
+    fRemember("Table", Controls.table(fDemoParent("Table", oData), fOptions({
         Columns = {{Text = "Name", Width = 190}, {Text = "Kind", Width = 130}, {Text = "Value", Width = 100}},
         Items = tRows, Value = "record-1", OnChange = fChanged("Table selection")
     })));
-    fRemember("TableMultiSelect", Controls.checkbox(oData, fOptions({
+    fRemember("TableMultiSelect", Controls.checkbox(fDemoParent("TableMultiSelect", oData), fOptions({
         Text = "Multi-select",
         OnChange = function(bEnabled)
             tWidgets.Table.setMultiSelectEnabled(bEnabled, true);
         end
     })));
-    fRemember("TreeHeading", Controls.label(oData, fOptions({Value = "TREE / add, remove, expand"})));
-    fRemember("TableHeading", Controls.label(oData, fOptions({Value = "TABLE / 1,000 rows / click headers to sort"})));
     local nNewNode, nNewRow = 0, 1000;
-    fRemember("TreeAdd", Controls.button(oData, fOptions({
+    fRemember("TreeAdd", Controls.button(fDemoParent("TreeAdd", oData), fOptions({
         Text = "Add child",
         OnClick = function()
             nNewNode = nNewNode + 1;
@@ -550,7 +569,7 @@ return function(oParent)
             tWidgets.Tree.TreeControl:SetFocus();
         end
     })));
-    fRemember("TreeRemove", Controls.button(oData, fOptions({
+    fRemember("TreeRemove", Controls.button(fDemoParent("TreeRemove", oData), fOptions({
         Text = "Remove node",
         OnClick = function()
             local sId = tWidgets.Tree.getValue();
@@ -561,7 +580,7 @@ return function(oParent)
             end
         end
     })));
-    fRemember("TableAdd", Controls.button(oData, fOptions({
+    fRemember("TableAdd", Controls.button(fDemoParent("TableAdd", oData), fOptions({
         Text = "Add row",
         OnClick = function()
             nNewRow = nNewRow + 1;
@@ -571,7 +590,7 @@ return function(oParent)
             tWidgets.Table.TableControl:SetFocus();
         end
     })));
-    fRemember("TableRemove", Controls.button(oData, fOptions({
+    fRemember("TableRemove", Controls.button(fDemoParent("TableRemove", oData), fOptions({
         Text = "Remove row",
         OnClick = function()
             local tSelected = tWidgets.Table.getSelected();
@@ -615,7 +634,7 @@ return function(oParent)
         };
     end
 
-    fRemember("ListEx", Controls.listEx(oData, fOptions({
+    fRemember("ListEx", Controls.listEx(fDemoParent("ListEx", oData), fOptions({
         Columns = {
             {Key = "Picture", Type = "image", Width = 60},
             {Key = "Name", Type = "text", Weight = 2},
@@ -627,7 +646,7 @@ return function(oParent)
             fMessage("Activated: "..tWidgets.ListEx.getCell(nIndex, 2));
         end
     })));
-    fRemember("ListExMultiSelect", Controls.checkbox(oData, fOptions({
+    fRemember("ListExMultiSelect", Controls.checkbox(fDemoParent("ListExMultiSelect", oData), fOptions({
         Text = "Multi-select",
         OnChange = function(bEnabled)
             tWidgets.ListEx.setMultiSelectEnabled(bEnabled, true);
@@ -642,9 +661,8 @@ return function(oParent)
         end);
     end
 
-    local oListExHeading = fLabel(oData, "LISTEX / picture, name, class / 1,000 initial rows", 16, 0);
     local nNewCharacter = 1000;
-    fRemember("ListExUpdate", Controls.button(oData, fOptions({
+    fRemember("ListExUpdate", Controls.button(fDemoParent("ListExUpdate", oData), fOptions({
         Text = "Change class",
         OnClick = function()
             local nIndex = tWidgets.ListEx.getValue();
@@ -656,7 +674,7 @@ return function(oParent)
             end
         end
     })));
-    fRemember("ListExAdd", Controls.button(oData, fOptions({
+    fRemember("ListExAdd", Controls.button(fDemoParent("ListExAdd", oData), fOptions({
         Text = "Add row",
         OnClick = function()
             nNewCharacter = nNewCharacter + 1;
@@ -664,7 +682,7 @@ return function(oParent)
             tWidgets.ListEx.setValue(#tWidgets.ListEx.Items, true);
         end
     })));
-    fRemember("ListExRemove", Controls.button(oData, fOptions({
+    fRemember("ListExRemove", Controls.button(fDemoParent("ListExRemove", oData), fOptions({
         Text = "Remove row",
         OnClick = function()
             local tSelected = tWidgets.ListEx.getSelected();
@@ -676,7 +694,7 @@ return function(oParent)
         end
     })));
     -- Split panes live with the scrolling demo in the Containers category.
-    fRemember("SplitContainer", Controls.splitContainer(oContainers, fOptions({
+    fRemember("SplitContainer", Controls.splitContainer(fDemoParent("SplitContainer", oContainers), fOptions({
         Value = 0.5, MinFirst = 100, MinSecond = 100,
         OnChange = function(nRatio)
             fMessage(string.format("Split: %.1f%%", nRatio * 100));
@@ -699,7 +717,7 @@ return function(oParent)
             fMessage("Second split pane action.");
         end
     })));
-    fRemember("SplitToggle", Controls.button(oContainers, fOptions({
+    fRemember("SplitToggle", Controls.button(fDemoParent("SplitToggle", oContainers), fOptions({
         Text = "Switch split direction",
         OnClick = function()
             local oSplit = tWidgets.SplitContainer;
@@ -765,16 +783,16 @@ return function(oParent)
         fMessage(oMenu.Kind.." action: "..tSelection.Id);
     end
 
-    fRemember("ContextMenu", Controls.contextMenu(oMenus, fOptions({Items = tMenuItems, OnSelect = fMenuSelected})));
-    fRemember("RadialMenu", Controls.radialMenu(oMenus, fOptions({Items = tMenuItems,
+    fRemember("ContextMenu", Controls.contextMenu(fDemoParent("ContextMenu", oMenus), fOptions({Items = tMenuItems, OnSelect = fMenuSelected})));
+    fRemember("RadialMenu", Controls.radialMenu(fDemoParent("RadialMenu", oMenus), fOptions({Items = tMenuItems,
         MinRadius = 64, MaxRadius = 160, Spacing = 12, OnSelect = fMenuSelected})));
-    fRemember("ContextMenuTarget", Controls.button(oMenus, fOptions({
+    fRemember("ContextMenuTarget", Controls.button(fDemoParent("ContextMenuTarget", oMenus), fOptions({
         Text = "Context menu: click / right-click",
         OnClick = function()
             tWidgets.ContextMenu.showAtObject(tWidgets.ContextMenuTarget);
         end
     })));
-    fRemember("RadialMenuTarget", Controls.button(oMenus, fOptions({
+    fRemember("RadialMenuTarget", Controls.button(fDemoParent("RadialMenuTarget", oMenus), fOptions({
         Text = "Radial menu: click / right-click",
         OnClick = function()
             tWidgets.RadialMenu.showAtObject(tWidgets.RadialMenuTarget);
@@ -782,8 +800,8 @@ return function(oParent)
     })));
     tWidgets.ContextMenu.attach(tWidgets.ContextMenuTarget);
     tWidgets.RadialMenu.attach(tWidgets.RadialMenuTarget);
-    fRemember("MenuSelection", Controls.label(oMenus, fOptions({Value = "No menu action selected.", Wrap = true})));
-    fRemember("MenuDirection", Controls.button(oMenus, fOptions({
+    fRemember("MenuSelection", Controls.label(fDemoParent("MenuSelection", oMenus), fOptions({Value = "No menu action selected.", Wrap = true})));
+    fRemember("MenuDirection", Controls.button(fDemoParent("MenuDirection", oMenus), fOptions({
         Text = "Direction: CW",
         OnClick = function()
             local sDirection = tWidgets.RadialMenu.getDirection() == "CW" and "CCW" or "CW";
@@ -792,7 +810,7 @@ return function(oParent)
             tWidgets.MenuDirection.refresh();
         end
     })));
-    fRemember("MenuShape", Controls.button(oMenus, fOptions({
+    fRemember("MenuShape", Controls.button(fDemoParent("MenuShape", oMenus), fOptions({
         Text = "Default shape: circle",
         OnClick = function()
             local tNext = {circle = "diamond", diamond = "square", square = "circle"};
@@ -802,42 +820,34 @@ return function(oParent)
             tWidgets.MenuShape.refresh();
         end
     })));
-    fLabel(oMenus, "Start angle (0 top, clockwise degrees)", 16, 180);
-    fRemember("MenuAngle", Controls.spinner(oMenus, fOptions({Min = 0, Max = 359, Step = 15, Value = 0,
+    fRemember("MenuAngle", Controls.spinner(fDemoParent("MenuAngle", oMenus), fOptions({Min = 0, Max = 359, Step = 15, Value = 0,
         OnChange = function(nValue)
             tWidgets.RadialMenu.setStartAngle(nValue, true);
         end
     })));
-    fLabel(oMenus, "Minimum edge spacing", 16, 270);
-    fRemember("MenuSpacing", Controls.slider(oMenus, fOptions({Min = 0, Max = 40, Step = 1, Value = 12,
+    fRemember("MenuSpacing", Controls.slider(fDemoParent("MenuSpacing", oMenus), fOptions({Min = 0, Max = 40, Step = 1, Value = 12,
         OnChange = function(nValue)
             tWidgets.RadialMenu.setSpacing(nValue, true);
         end
     })));
-    fLabel(oMenus, "Minimum / maximum radius", 360, 180);
-    fRemember("MenuMinRadius", Controls.spinner(oMenus, fOptions({Min = 0, Max = 300, Step = 8, Value = 64,
+    fRemember("MenuMinRadius", Controls.spinner(fDemoParent("MenuMinRadius", oMenus), fOptions({Min = 0, Max = 300, Step = 8, Value = 64,
         OnChange = function(nValue)
             local nMax = math.max(nValue, tWidgets.MenuMaxRadius.getValue());
             tWidgets.MenuMaxRadius.setValue(nMax);
             tWidgets.RadialMenu.setRadiusRange(nValue, nMax, true);
         end
     })));
-    fRemember("MenuMaxRadius", Controls.spinner(oMenus, fOptions({Min = 0, Max = 300, Step = 8, Value = 160,
+    fRemember("MenuMaxRadius", Controls.spinner(fDemoParent("MenuMaxRadius", oMenus), fOptions({Min = 0, Max = 300, Step = 8, Value = 160,
         OnChange = function(nValue)
             local nMin = math.min(nValue, tWidgets.MenuMinRadius.getValue());
             tWidgets.MenuMinRadius.setValue(nMin);
             tWidgets.RadialMenu.setRadiusRange(nMin, nValue, true);
         end
     })));
-    fRemember("MenuClipImage", Controls.checkbox(oMenus, fOptions({Text = "Clip Attack image to its host", Selected = true,
+    fRemember("MenuClipImage", Controls.checkbox(fDemoParent("MenuClipImage", oMenus), fOptions({Text = "Clip Attack image to its host", Selected = true,
         OnChange = function(bValue)
             tWidgets.RadialMenu.setItem("attack", {ClipImage = bValue}, true);
         end
-    })));
-    fRemember("MenuHelp", Controls.label(oMenus, fOptions({Wrap = true,
-        Value = "Build opens a submenu; Build 2 opens another. More carries additional choices, with Back on every nested page.\n"
-            .."Escape goes back, then closes the root. Enter/Space selects; arrows/Tab traverse enabled items.\n"
-            .."Actions close before returning Id, application Value and the item Path. Both menus use the current skin."
     })));
     tWidgets.RadialMenu.on("layoutFailed", function(oSource, tEvent)
         fMessage("Radial menu: "..tEvent.Reason);
@@ -845,14 +855,14 @@ return function(oParent)
 
     -- Editors retain native typing while skinned actions demonstrate reusable dialogs.
     local oEditors = tTabs.Pages[9];
-    fRemember("ToggleButton", Controls.toggleButton(oEditors, fOptions({Text = "Auto-cast", Value = true,
+    fRemember("ToggleButton", Controls.toggleButton(fDemoParent("ToggleButton", oEditors), fOptions({Text = "Auto-cast", Value = true,
         OnChange = fChanged("Auto-cast")})));
-    fRemember("NumericField", Controls.numericField(oEditors, fOptions({Min = -100, Max = 100,
+    fRemember("NumericField", Controls.numericField(fDemoParent("NumericField", oEditors), fOptions({Min = -100, Max = 100,
         Value = 12.5, Step = 0.25, Precision = 2, OnChange = fChanged("Decimal value")})));
-    fRemember("NumericPlain", Controls.numericField(oEditors, fOptions({Min = 0, Max = 10,
+    fRemember("NumericPlain", Controls.numericField(fDemoParent("NumericPlain", oEditors), fOptions({Min = 0, Max = 10,
         Value = 1.125, Step = 0.125, Precision = 3, StepButtons = false,
         OnChange = fChanged("Typed decimal")})));
-    fRemember("NumericReadOnly", Controls.numericField(oEditors, fOptions({Min = 0, Max = 100,
+    fRemember("NumericReadOnly", Controls.numericField(fDemoParent("NumericReadOnly", oEditors), fOptions({Min = 0, Max = 100,
         Value = 42.5, ReadOnly = true})));
     fRemember("Dialog", Controls.dialog(oFrame, fOptions({Title = "Sample settings",
         Message = "Reusable modeless dialog. Choose OK or Cancel; Escape cancels.",
@@ -860,17 +870,15 @@ return function(oParent)
     fRemember("ModalDialog", Controls.dialog(oFrame, fOptions({Title = "Confirm sample action",
         Message = "A native modal dialog with a skinned client. Yes, No, or Escape to cancel.",
         Buttons = {"yes", "no", "cancel"}, DefaultResult = "yes"})));
-    fRemember("DialogOpen", Controls.button(oEditors, fOptions({Text = "Open modeless dialog",
+    fRemember("DialogOpen", Controls.button(fDemoParent("DialogOpen", oEditors), fOptions({Text = "Open modeless dialog",
         OnClick = function()
             tWidgets.Dialog.show();
         end})));
-    fRemember("DialogModalOpen", Controls.button(oEditors, fOptions({Text = "Open modal dialog",
+    fRemember("DialogModalOpen", Controls.button(fDemoParent("DialogModalOpen", oEditors), fOptions({Text = "Open modal dialog",
         OnClick = function()
             local sResult = tWidgets.ModalDialog.showModal();
             fMessage("Modal result: "..tostring(sResult));
         end})));
-    fRemember("EditorHelp", Controls.label(oEditors, fOptions({Wrap = true,
-        Value = "Toggle: mouse, Enter or Space. Decimal fields: type and press Enter, or leave the field to commit. Up/Down step; Page Up/Down step ten times. Left/Right/Home/End edit text. Invalid text restores the last value. Escape restores an edit. The second field has no step buttons; the third is read-only."})));
 
     -- Tool strips, independent status sections and linked color channels share
     -- this category so runtime changes are visible together.
@@ -888,14 +896,14 @@ return function(oParent)
         tToolItems[#tToolItems + 1] = {Id = "command"..nIndex, Text = "Command "..nIndex,
             Tooltip = "Overflow command "..nIndex};
     end
-    fRemember("StatusBar", Controls.statusBar(oTools, fOptions({Items = {
+    fRemember("StatusBar", Controls.statusBar(fDemoParent("StatusBar", oTools), fOptions({Items = {
         {Id = "message", Text = "Ready", Weight = 2},
         {Id = "color", Text = "RGBA", Width = 190},
         {Id = "meter", Width = 180},
     }, OnActivate = function(sId)
         fMessage("Status section: "..sId);
     end})));
-    fRemember("Toolbar", Controls.toolbar(oTools, fOptions({Items = tToolItems,
+    fRemember("Toolbar", Controls.toolbar(fDemoParent("Toolbar", oTools), fOptions({Items = tToolItems,
         OnActivate = function(sId)
             tWidgets.StatusBar.setItem("message", {Text = "Command: "..sId}, true);
             fMessage("Toolbar command: "..sId);
@@ -908,20 +916,20 @@ return function(oParent)
         tWidgets.StatusProgress.layout(4, 3, math.max(1, nWidth - 8), math.max(1, nHeight - 6));
         jEvent:Skip();
     end);
-    fRemember("ColorPicker", Controls.colorPicker(oTools, fOptions({Value = {R = 65, G = 140, B = 210, A = 190},
+    fRemember("ColorPicker", Controls.colorPicker(fDemoParent("ColorPicker", oTools), fOptions({Value = {R = 65, G = 140, B = 210, A = 190},
         OnChange = function(tColor)
             local sHex = string.format("#%02X%02X%02X%02X", tColor.R, tColor.G, tColor.B, tColor.A);
             tWidgets.StatusBar.setItem("color", {Text = sHex}, true);
             fMessage("Color: "..sHex);
         end})));
-    fRemember("ColorPickerAlpha", Controls.colorPicker(oTools, fOptions({Value = {R = 210, G = 90, B = 65, A = 100}})));
-    fRemember("ToolbarAdd", Controls.button(oTools, fOptions({Text = "Add command",
+    fRemember("ColorPickerAlpha", Controls.colorPicker(fDemoParent("ColorPickerAlpha", oTools), fOptions({Value = {R = 210, G = 90, B = 65, A = 100}})));
+    fRemember("ToolbarAdd", Controls.button(fDemoParent("ToolbarAdd", oTools), fOptions({Text = "Add command",
         OnClick = function()
             local tItems = tWidgets.Toolbar.getItems();
             tItems[#tItems + 1] = {Id = "added"..#tItems, Text = "Added "..#tItems};
             tWidgets.Toolbar.setItems(tItems, true);
         end})));
-    fRemember("ToolbarRemove", Controls.button(oTools, fOptions({Text = "Remove last command",
+    fRemember("ToolbarRemove", Controls.button(fDemoParent("ToolbarRemove", oTools), fOptions({Text = "Remove last command",
         OnClick = function()
             local tItems = tWidgets.Toolbar.getItems();
             if (#tItems > 0) then
@@ -929,14 +937,12 @@ return function(oParent)
                 tWidgets.Toolbar.setItems(tItems, true);
             end
         end})));
-    fRemember("ToolsHelp", Controls.label(oTools, fOptions({Wrap = true,
-        Value = "Toolbar: arrows/Home/End navigate, Enter/Space activates; More reveals hidden commands. Hover for skinned hints. Status sections resize independently; the last hosts a progress control. Color picker: RGB, HSV and alpha sliders share a preview. Up/Down/Tab choose a channel; Left/Right adjust; Page Up/Down step ten; Home/End set limits. Apply/Enter commits, Cancel/Escape/outside click cancels."})));
 
     -- The workbench uses the real Tabs object; this nested instance exposes its
     -- runtime policies without disturbing the stable outer example categories.
     local oTabsPage = tTabs.Pages[11];
     local nTabSerial = 4;
-    fRemember("ExampleTabs", Controls.tabs(oTabsPage, fOptions({
+    fRemember("ExampleTabs", Controls.tabs(fDemoParent("ExampleTabs", oTabsPage), fOptions({
         Items = {
             {Id = "first", Text = "First page"},
             {Id = "second", Text = "A longer caption", Image = wxLuma.Config.ImagePath.."/Menu/Command Shield.png"},
@@ -964,38 +970,38 @@ return function(oParent)
     for nIndex = 1, 4 do
         fTabLabel(nIndex);
     end
-    fRemember("TabsMode", Controls.button(oTabsPage, fOptions({Text = "Wrap / scroll",
+    fRemember("TabsMode", Controls.button(fDemoParent("TabsMode", oTabsPage), fOptions({Text = "Wrap / scroll",
         OnClick = function()
             local oTabs = tWidgets.ExampleTabs;
             oTabs.setLayoutMode(oTabs.getLayoutMode() == "wrap" and "scroll" or "wrap", true);
         end})));
-    fRemember("TabsPosition", Controls.button(oTabsPage, fOptions({Text = "Change header edge",
+    fRemember("TabsPosition", Controls.button(fDemoParent("TabsPosition", oTabsPage), fOptions({Text = "Change header edge",
         OnClick = function()
             local tNext = {top = "right", right = "bottom", bottom = "left", left = "top"};
             tWidgets.ExampleTabs.setPosition(tNext[tWidgets.ExampleTabs.getPosition()], true);
         end})));
-    fRemember("TabsAdd", Controls.button(oTabsPage, fOptions({Text = "Add page",
+    fRemember("TabsAdd", Controls.button(fDemoParent("TabsAdd", oTabsPage), fOptions({Text = "Add page",
         OnClick = function()
             local sId = "added:"..nTabSerial;
             tWidgets.ExampleTabs.addItem({Id = sId, Text = "Added page "..nTabSerial}, nil, true);
             fTabLabel(sId);
             tWidgets.ExampleTabs.setValue(sId, true);
         end})));
-    fRemember("TabsRemove", Controls.button(oTabsPage, fOptions({Text = "Remove selected",
+    fRemember("TabsRemove", Controls.button(fDemoParent("TabsRemove", oTabsPage), fOptions({Text = "Remove selected",
         OnClick = function()
             local oTabs = tWidgets.ExampleTabs;
             if (oTabs.getValue() > 0) then
                 oTabs.removeItem(oTabs.getValue(), true);
             end
         end})));
-    fRemember("TabsRename", Controls.button(oTabsPage, fOptions({Text = "Rename selected",
+    fRemember("TabsRename", Controls.button(fDemoParent("TabsRename", oTabsPage), fOptions({Text = "Rename selected",
         OnClick = function()
             local oTabs = tWidgets.ExampleTabs;
             if (oTabs.getValue() > 0) then
                 oTabs.setItem(oTabs.getValue(), {Text = "Renamed page "..nTabSerial}, true);
             end
         end})));
-    fRemember("TabsMove", Controls.button(oTabsPage, fOptions({Text = "Move selected first",
+    fRemember("TabsMove", Controls.button(fDemoParent("TabsMove", oTabsPage), fOptions({Text = "Move selected first",
         OnClick = function()
             local oTabs = tWidgets.ExampleTabs;
             if (oTabs.getValue() > 0) then
@@ -1016,11 +1022,11 @@ return function(oParent)
         {Name = "Boromir", Class = "Captain", Picture = wxLuma.Config.ImagePath.."/Menu/Command Shield.png"},
         {Name = "Gandalf", Class = "Wizard", Picture = wxLuma.Config.ImagePath.."/Menu/Command Banner.png"},
     };
-    fRemember("CheckListEx", Controls.listEx(oTreeExPage, fOptions({Columns = tCheckColumns,
+    fRemember("CheckListEx", Controls.listEx(fDemoParent("CheckListEx", oTreeExPage), fOptions({Columns = tCheckColumns,
         Items = tCheckRows, RowHeight = 48, OnCheckChange = function(nIndex, bChecked)
             fMessage("ListEx row "..nIndex.." checked: "..tostring(bChecked));
         end})));
-    fRemember("TreeEx", Controls.treeEx(oTreeExPage, fOptions({Columns = {
+    fRemember("TreeEx", Controls.treeEx(fDemoParent("TreeEx", oTreeExPage), fOptions({Columns = {
         {Key = "Name", Type = "text", Weight = 2, Title = "Name"},
         {Key = "Class", Type = "text", Width = 100, Title = "Class"},
     }, HierarchyColumn = 1,
@@ -1035,189 +1041,296 @@ return function(oParent)
         }, OnChange = fChanged("TreeEx selected"), OnCheckChange = function(sId, bChecked)
             fMessage("TreeEx "..sId.." checked: "..tostring(bChecked));
         end})));
-    fRemember("CheckListToggle", Controls.checkbox(oTreeExPage, fOptions({Text = "ListEx checkboxes",
+    fRemember("CheckListToggle", Controls.checkbox(fDemoParent("CheckListToggle", oTreeExPage), fOptions({Text = "ListEx checkboxes",
         OnChange = function(bFlag)
             tWidgets.CheckListEx.setCheckboxesEnabled(bFlag, true);
         end})));
-    fRemember("CheckTreeToggle", Controls.checkbox(oTreeExPage, fOptions({Text = "TreeEx checkboxes",
+    fRemember("CheckTreeToggle", Controls.checkbox(fDemoParent("CheckTreeToggle", oTreeExPage), fOptions({Text = "TreeEx checkboxes",
         OnChange = function(bFlag)
             tWidgets.TreeEx.setCheckboxesEnabled(bFlag, true);
         end})));
-    fRemember("TreeExMulti", Controls.checkbox(oTreeExPage, fOptions({Text = "TreeEx multi-select",
+    fRemember("TreeExMulti", Controls.checkbox(fDemoParent("TreeExMulti", oTreeExPage), fOptions({Text = "TreeEx multi-select",
         OnChange = function(bFlag)
             tWidgets.TreeEx.setMultiSelectEnabled(bFlag, true);
         end})));
-    fRemember("CheckListMulti", Controls.checkbox(oTreeExPage, fOptions({Text = "ListEx multi-select",
+    fRemember("CheckListMulti", Controls.checkbox(fDemoParent("CheckListMulti", oTreeExPage), fOptions({Text = "ListEx multi-select",
         OnChange = function(bFlag)
             tWidgets.CheckListEx.setMultiSelectEnabled(bFlag, true);
         end})));
-    fRemember("TreeExPropagation", Controls.checkbox(oTreeExPage, fOptions({Text = "Cascade checks to descendants", Selected = true,
+    fRemember("TreeExPropagation", Controls.checkbox(fDemoParent("TreeExPropagation", oTreeExPage), fOptions({Text = "Cascade checks to descendants", Selected = true,
         OnChange = function(bFlag)
             tWidgets.TreeEx.setCheckPropagationEnabled(bFlag, true);
         end})));
-    fRemember("TreeExHelp", Controls.label(oTreeExPage, fOptions({Wrap = true,
-        Value = "Checkboxes default off. Clicking a checkbox toggles it without selecting the row. Plain Space toggles the focused checkbox; Ctrl/Cmd+Space retains multi-selection behavior. Tree checks cascade to every descendant by default, including collapsed children; turn cascade off for independent checks. Node icons follow indentation beside their labels. Left/Right collapse, expand and navigate branches. Shift and Ctrl/Cmd select rows as usual."})));
 
+    -- Inspector controls share the same artwork and audio hooks as the gallery.
+    local oInspector = tTabs.Pages[13];
+    fRemember("MenuBar", Controls.menuBar(fDemoParent("MenuBar", oInspector), fOptions({Menus = {
+        {Id = "file", Text = "File", Items = {{Id = "open", Text = "Choose file"}, {Id = "folder", Text = "Choose folder"}}},
+        {Id = "view", Text = "View", Items = {{Id = "expand", Text = "Expand details"}, {Id = "collapse", Text = "Collapse details"}}},
+        {Id = "help", Text = "Help", Items = {{Id = "about", Text = "About inspector controls"}}},
+    }, OnSelect = function(tSelection)
+        if (tSelection.Id == "open") then oGallery.show("FilePicker", true); tWidgets.FilePicker.open();
+        elseif (tSelection.Id == "folder") then oGallery.show("FolderPicker", true); tWidgets.FolderPicker.open();
+        elseif (tSelection.Id == "expand") then oGallery.show("CollapsiblePanel", true); tWidgets.CollapsiblePanel.setExpanded(true, true);
+        elseif (tSelection.Id == "collapse") then oGallery.show("CollapsiblePanel", true); tWidgets.CollapsiblePanel.setExpanded(false, true);
+        else fMessage("Inspector: skinned editors, menus, file browsing and disclosure containers."); end
+    end})));
+    fRemember("SearchField", Controls.searchField(fDemoParent("SearchField", oInspector), fOptions({Hint = "Type a sample search", Debounce = 180,
+        OnSearch = function(sText) fMessage("Search: "..sText); end})));
+    fRemember("ComboBox", Controls.comboBox(fDemoParent("ComboBox", oInspector), fOptions({Items = {"Balanced", "Cautious", "Fast"},
+        Value = "Balanced", Hint = "Choose or type a profile", OnChange = fChanged("Profile")})));
+    fRemember("FilePicker", Controls.filePicker(fDemoParent("FilePicker", oInspector), fOptions({Hint = "Choose an existing file", OnChange = fChanged("File")})));
+    fRemember("FolderPicker", Controls.folderPicker(fDemoParent("FolderPicker", oInspector), fOptions({Hint = "Choose an existing folder", OnChange = fChanged("Folder")})));
+    local oDetails = fRemember("CollapsiblePanel", Controls.collapsiblePanel(fDemoParent("CollapsiblePanel", oInspector), fOptions({Text = "Details",
+        ContentHeight = 64, OnChange = function(bExpanded)
+            local nX, nY = tWidgets.CollapsiblePanel.Control:GetPositionXY();
+            local nWidth = tWidgets.CollapsiblePanel.Control:GetSizeWH();
+            tWidgets.CollapsiblePanel.layout(nX, nY, nWidth, tWidgets.CollapsiblePanel.getBestHeight());
+            fMessage(bExpanded and "Details expanded." or "Details collapsed.");
+        end})));
+    fRemember("DetailsText", Controls.label(oDetails.Content, fOptions({Value = "Collapsing preserves child values.", Wrap = true})));
+    local oAccordion = fRemember("Accordion", Controls.accordion(fDemoParent("Accordion", oInspector), fOptions({Sections = {
+        {Id = "appearance", Text = "Appearance", Height = 62, Expanded = true},
+        {Id = "behavior", Text = "Behavior", Height = 62},
+    }, OnChange = function(sId, bExpanded) fMessage(sId..(bExpanded and " expanded." or " collapsed.")); end})));
+    fRemember("AppearanceText", Controls.label(oAccordion.getSection("appearance").Content,
+        fOptions({Value = "Every glyph and surface comes from the skin.", Wrap = true})));
+    fRemember("BehaviorCheck", Controls.checkbox(oAccordion.getSection("behavior").Content,
+        fOptions({Text = "Keep sample state", Selected = true})));
+    fRemember("PropertyGrid", Controls.propertyGrid(fDemoParent("PropertyGrid", oInspector), fOptions({LabelWidth = 130, Properties = {
+        {Id = "general", Text = "General", Type = "category"},
+        {Id = "name", Text = "Name", Value = "Sample object"},
+        {Id = "enabled", Text = "Enabled", Type = "boolean", Value = true},
+        {Id = "opacity", Text = "Opacity", Type = "number", Min = 0, Max = 1, Step = 0.05, Precision = 2, Value = 0.8},
+        {Id = "profile", Text = "Profile", Type = "choice", Items = {"Balanced", "Cautious", "Fast"}, Value = "Balanced"},
+        {Id = "tint", Text = "Tint", Type = "color", Value = {R = 90, G = 180, B = 210}},
+        {Id = "resources", Text = "Resources", Type = "category"},
+        {Id = "file", Text = "File", Type = "file"},
+        {Id = "folder", Text = "Folder", Type = "folder"},
+        {Id = "identifier", Text = "Identifier", Value = "sample-001", ReadOnly = true},
+    }, OnChange = function(sId, vValue) fMessage("Property "..sId..": "..tostring(vValue)); end})));
+
+    fRemember("MultilineText", Controls.multilineText(fDemoParent("MultilineText", oInput), fOptions({
+        Value = "Notes and descriptions\n\nEnter inserts a newline. Try selection, clipboard and undo.", OnChange = fChanged("Notes")})));
+    fRemember("RangeSlider", Controls.rangeSlider(fDemoParent("RangeSlider", oInput), fOptions({
+        Min = 0, Max = 100, Step = 1, Value = {Low = 20, High = 80}, OnChange = function(tValue)
+            fMessage("Selected range: "..tValue.Low.." to "..tValue.High);
+        end})));
+    for nIndex, sMode in ipairs({"none", "revolve", "alternate"}) do
+        local sKey = ({"Knob", "KnobWrap", "KnobBounce"})[nIndex];
+        fRemember(sKey, Controls.knob(fDemoParent(sKey, oInput), fOptions({Min = 0, Max = 100,
+            Value = 95, Rate = 10, Continuity = sMode, OnChange = fChanged("Knob "..sMode)})));
+    end
+    for _, tAction in ipairs({{"KnobIncrease", "Increase all", "increase"}, {"KnobDecrease", "Decrease all", "decrease"}}) do
+        fRemember(tAction[1], Controls.button(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], OnClick = function()
+            for _, sKey in ipairs({"Knob", "KnobWrap", "KnobBounce"}) do tWidgets[sKey][tAction[3]](1, true); end
+        end})));
+    end
+    for _, tSample in ipairs({{"DateTimePicker", "date", "2026-10-21"}, {"TimePicker", "time", "14:30"},
+        {"CombinedPicker", "datetime", "2026-10-21 14:30"}}) do
+        fRemember(tSample[1], Controls.dateTimePicker(fDemoParent(tSample[1], oInput), fOptions({
+            Mode = tSample[2], Value = tSample[3], OnChange = fChanged("Selected "..tSample[2])})));
+    end
+    fRemember("Breadcrumb", Controls.breadcrumb(fDemoParent("Breadcrumb", oInput), fOptions({Items = {
+        {Id = "home", Text = "Home"}, {Id = "project", Text = "Project"}, {Id = "assets", Text = "Assets"},
+        {Id = "icons", Text = "Icons"}, {Id = "selected", Text = "Selected item"}}, OnChange = fChanged("Path")})));
+    fRemember("Notification", Controls.notification(fDemoParent("Notification", oInput), fOptions({
+        Value = "Choose a notification below. Close or Escape dismisses it.", Duration = 3000})));
+    for _, sSeverity in ipairs({"info", "success", "warning", "error"}) do
+        local sKey = "Notify"..sSeverity:sub(1, 1):upper()..sSeverity:sub(2);
+        fRemember(sKey, Controls.button(fDemoParent(sKey, oInput), fOptions({Text = "Show "..sSeverity, OnClick = function()
+            tWidgets.Notification.show("Sample "..sSeverity.." notification", sSeverity, sSeverity == "error" and 0 or 3000);
+        end})));
+    end
+    local oDock = fRemember("DockablePanel", Controls.dockablePanel(fDemoParent("DockablePanel", oInput),
+        fOptions({Text = "Inspector", Extent = 240, OnChange = function(tState)
+            fMessage(tState.Floating and "Inspector is floating." or "Inspector docked: "..tState.Side);
+        end})));
+    local oDockText = fRemember("DockText", Controls.textfield(oDock.Content, fOptions({Value = "Child text survives docking."})));
+    local function fDockContent() local nWidth = oDock.Content:GetClientSizeWH(); oDockText.layout(12, 12, math.max(1, nWidth - 24), 38); end
+    oDock.Content:Connect(wx.wxEVT_SIZE, function(oEvent) fDockContent(); oEvent:Skip(); end); fDockContent();
+    for _, tAction in ipairs({{"DockFloat", "Float", "float"}, {"DockLeft", "Dock left", "left"},
+        {"DockRight", "Dock right", "right"}, {"DockFill", "Dock fill", "fill"}}) do
+        fRemember(tAction[1], Controls.button(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], OnClick = function()
+            if (tAction[3] == "float") then oDock.float(nil, nil, true); else oDock.dock(tAction[3], true); end
+        end})));
+    end
+
+    for nIndex, tSample in ipairs({{"Switch", "horizontal", false}, {"SwitchReverse", "horizontal", true},
+        {"SwitchVertical", "vertical", false}, {"SwitchVerticalReverse", "vertical", true}}) do
+        fRemember(tSample[1], Controls.switch(fDemoParent(tSample[1], oInput), fOptions({
+            Orientation = tSample[2], Reversed = tSample[3], Value = nIndex % 2 == 1,
+            OnChange = fChanged(tSample[1])})));
+    end
+    for _, tAction in ipairs({{"SwitchOrientation", "Rotate switches", "orientation"},
+        {"SwitchDirection", "Reverse switches", "direction"}}) do
+        fRemember(tAction[1], Controls.button(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], OnClick = function()
+            for _, sKey in ipairs({"Switch", "SwitchReverse", "SwitchVertical", "SwitchVerticalReverse"}) do
+                local oSwitch = tWidgets[sKey];
+                if (tAction[3] == "orientation") then
+                    oSwitch.setOrientation(oSwitch.getOrientation() == "horizontal" and "vertical" or "horizontal", true);
+                else oSwitch.setReversed(not oSwitch.getReversed(), true); end
+            end
+        end})));
+    end
+    for _, tSample in ipairs({{"LED", true, false, {R = 80, G = 220, B = 140}},
+        {"LEDGlass", true, true, {R = 245, G = 80, B = 65}}, {"LEDOff", false, true, {R = 65, G = 160, B = 245}}}) do
+        fRemember(tSample[1], Controls.led(fDemoParent(tSample[1], oInput), fOptions({
+            Value = tSample[2], Glass = tSample[3], Color = tSample[4], Size = 72})));
+    end
+    for _, tAction in ipairs({{"LEDValue", "Power", "Value"}, {"LEDGlow", "Glow", "Glow"}, {"LEDGlassToggle", "Glass cover", "Glass"}}) do
+        fRemember(tAction[1], Controls.checkbox(fDemoParent(tAction[1], oInput), fOptions({
+            Text = tAction[2], Selected = tAction[3] ~= "Glass", OnChange = function(bValue)
+                tWidgets.LED["set"..tAction[3]](bValue, true);
+            end})));
+    end
+    fRemember("LEDBrightness", Controls.slider(fDemoParent("LEDBrightness", oInput), fOptions({
+        Min = 0, Max = 100, Value = 100, Step = 1, OnChange = function(nValue) tWidgets.LED.setBrightness(nValue / 100, true); end})));
+    fRemember("LEDSize", Controls.slider(fDemoParent("LEDSize", oInput), fOptions({
+        Min = 12, Max = 96, Value = 72, Step = 1, OnChange = function(nValue)
+            tWidgets.LED.setSize(nValue, true);
+            if (tWidgets.LED.getGlowRadius() == nil) then tWidgets.LEDGlowRadius.setValue(nValue * 0.75); end
+        end})));
+    fRemember("LEDColor", Controls.colorPicker(fDemoParent("LEDColor", oInput), fOptions({
+        Value = {R = 80, G = 220, B = 140}, OnChange = function(tColor) tWidgets.LED.setColor(tColor, true); end})));
+    fRemember("LEDGlowRadius", Controls.slider(fDemoParent("LEDGlowRadius", oInput), fOptions({
+        Min = 0, Max = 72, Value = 54, Step = 1, OnChange = function(nValue) tWidgets.LED.setGlowRadius(nValue, true); end})));
+    fRemember("LEDGlowAutomatic", Controls.button(fDemoParent("LEDGlowAutomatic", oInput), fOptions({
+        Text = "Automatic glow radius", OnClick = function()
+            tWidgets.LED.setGlowRadius(nil, true);
+            tWidgets.LEDGlowRadius.setValue(tWidgets.LED.getSize() * 0.75);
+        end})));
+
+    local sLogIcon = wxLuma.Path.."/Images/Controls/Control Log Viewer Icon Normal.png";
+    local tLogSamples = {{Id = "ready", Text = "Ready. Drag across text to select a substring.", Icon = sLogIcon, Timestamp = "12:00:00"},
+        {Id = "unicode", Text = "Unicode: café, 雪, and ☃ remain selectable and copyable.", Timestamp = "12:00:01"},
+        {Id = "warning", Text = "An optional warning severity has no effect until enabled.", Severity = "warning", Timestamp = "12:00:02"},
+        {Id = "multiline", Text = "Multiple lines belong to the same entry.\nCopying the entry preserves every line.", Icon = sLogIcon, Timestamp = "12:00:03"}};
+    fRemember("LogViewer", Controls.logViewer(fDemoParent("LogViewer", oInput), fOptions({Entries = tLogSamples})));
+    fRemember("ActionLog", Controls.logViewer(fDemoParent("ActionLog", oInput), fOptions({Entries = {
+        {Text = "You enter the old watchtower.", Icon = sLogIcon}, {Text = "A hidden door opens."}, {Text = "You gain 25 experience."}},
+        Transparent = true, Background = function(oDC, oLog)
+            local nW, nH = oLog.Control:GetClientSizeWH(); tSkin.draw(oDC, "Log Viewer Game Background", 0, 0, nW, nH);
+        end})));
+    fWireAudio("LogMenu", tWidgets.LogViewer.ContextMenu);
+    fWireAudio("ActionLogMenu", tWidgets.ActionLog.ContextMenu);
+    local nLogAction = 0;
+    for _, tAction in ipairs({{"LogAppend", "Append actions", "append"}, {"LogClear", "Clear logs", "clear"},
+        {"LogCopy", "Copy selection", "copy"}, {"LogFollow", "Follow latest", "follow"}}) do
+        fRemember(tAction[1], Controls.button(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], OnClick = function()
+            if (tAction[3] == "append") then
+                nLogAction = nLogAction + 1;
+                tWidgets.LogViewer.addEntry({Text = "Sample output "..nLogAction, Severity = nLogAction % 3 == 0 and "warning" or nil, Icon = sLogIcon}, true);
+                tWidgets.ActionLog.addEntry({Text = "Action "..nLogAction..": your party advances.", Icon = sLogIcon}, true);
+            elseif (tAction[3] == "clear") then tWidgets.LogViewer.clear(true); tWidgets.ActionLog.clear(true);
+            elseif (tAction[3] == "copy") then local bCopied = tWidgets.LogViewer.copySelected(); fMessage(bCopied and "Log selection copied." or "Select log text or entries first.");
+            else tWidgets.LogViewer.scrollToEnd(true); tWidgets.ActionLog.scrollToEnd(true); end
+        end})));
+    end
+    fRemember("LogFilter", Controls.searchField(fDemoParent("LogFilter", oInput), fOptions({Hint = "Filter log text", Debounce = 120,
+        OnSearch = function(sText) tWidgets.LogViewer.setFilterText(sText, true); tWidgets.ActionLog.setFilterText(sText, true); end})));
+    for _, tAction in ipairs({{"LogSeverity", "Severity colors / labels", "SeverityEnabled", false},
+        {"LogWrap", "Wrap log text", "Wrap", true}, {"LogAutoScroll", "Auto-scroll logs", "AutoScroll", true}}) do
+        fRemember(tAction[1], Controls.checkbox(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], Selected = tAction[4], OnChange = function(bValue)
+            tWidgets.LogViewer["set"..tAction[3]](bValue, true);
+            if (tAction[3] ~= "SeverityEnabled") then tWidgets.ActionLog["set"..tAction[3]](bValue, true); end
+        end})));
+    end
+    fRemember("LogLimit", Controls.spinner(fDemoParent("LogLimit", oInput), fOptions({Min = 10, Max = 10000, Step = 10, Value = 1000,
+        OnChange = function(nValue) tWidgets.LogViewer.setMaxEntries(nValue, true); tWidgets.ActionLog.setMaxEntries(nValue, true); end})));
+
+    local tChartSeries = {{Id = "north", Text = "North", Points = {}}, {Id = "south", Text = "South", Points = {}}};
+    for nIndex = 1, 6 do
+        tChartSeries[1].Points[nIndex] = {Id = "p"..nIndex, X = nIndex, Y = 20 + (nIndex * 7) % 23};
+        tChartSeries[2].Points[nIndex] = {Id = "p"..nIndex, X = nIndex, Y = 12 + (nIndex * 11) % 19};
+    end
+    for _, tSample in ipairs({{"LineChart", "lineChart", "Line"}, {"AreaChart", "areaChart", "Area"},
+        {"BarChart", "barChart", "Grouped"}, {"StackedBarChart", "barChart", "Stacked"},
+        {"HorizontalBarChart", "barChart", "Horizontal"}, {"ScatterChart", "scatterChart", "XY points"}}) do
+        tItemHover[tSample[1]] = "pointHovered";
+        fRemember(tSample[1], Controls[tSample[2]](fDemoParent(tSample[1], oInput), fOptions({Title = tSample[3], Series = tChartSeries,
+            Stacked = tSample[1] == "StackedBarChart", Orientation = tSample[1] == "HorizontalBarChart" and "horizontal" or "vertical",
+            MaxPoints = 12, Precision = 0, OnChange = function(tValue) fMessage(tValue and "Selected "..tValue.Series.." / "..tValue.Point or "Chart selection cleared."); end})));
+    end
+    local tSlices = {{Id = "actions", Text = "Actions", Points = {{Id = "attack", Text = "Attack", Y = 45},
+        {Id = "defend", Text = "Defend", Y = 25}, {Id = "move", Text = "Move", Y = 20}, {Id = "other", Text = "Other", Y = 10}}}};
+    for _, sKey in ipairs({"PieChart", "DonutChart"}) do
+        tItemHover[sKey] = "pointHovered";
+        fRemember(sKey, Controls[sKey == "PieChart" and "pieChart" or "donutChart"](fDemoParent(sKey, oInput),
+            fOptions({Title = sKey == "PieChart" and "Pie" or "Donut", Series = tSlices, Precision = 0})));
+    end
+    local nChartPoint = 6;
+    for _, tAction in ipairs({{"ChartAppend", "Append values", "append"}, {"ChartReset", "Reset graph views", "reset"},
+        {"BarOrientation", "Rotate bars", "rotate"}, {"PieRotate", "Rotate slices", "pie"}, {"ScatterReset", "Reset scatter view", "scatter"}}) do
+        fRemember(tAction[1], Controls.button(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], OnClick = function()
+            if (tAction[3] == "append") then
+                nChartPoint = nChartPoint + 1;
+                for _, sKey in ipairs({"LineChart", "AreaChart"}) do
+                    tWidgets[sKey].addPoint("north", {Id = "p"..nChartPoint, X = nChartPoint, Y = 20 + (nChartPoint * 7) % 23}, true);
+                    tWidgets[sKey].addPoint("south", {Id = "p"..nChartPoint, X = nChartPoint, Y = 12 + (nChartPoint * 11) % 19}, true);
+                end
+            elseif (tAction[3] == "reset") then tWidgets.LineChart.resetView(true); tWidgets.AreaChart.resetView(true);
+            elseif (tAction[3] == "rotate") then for _, sKey in ipairs({"BarChart", "StackedBarChart"}) do tWidgets[sKey].setOrientation(tWidgets[sKey].getOrientation() == "vertical" and "horizontal" or "vertical", true); end
+            elseif (tAction[3] == "pie") then for _, sKey in ipairs({"PieChart", "DonutChart"}) do tWidgets[sKey].setStartAngle(tWidgets[sKey].getStartAngle() + 30, true); end
+            else tWidgets.ScatterChart.resetView(true); end
+        end})));
+    end
+    for _, tAction in ipairs({{"ChartMarkers", "Graph markers", "Markers", true, {"LineChart", "AreaChart"}},
+        {"ChartGrid", "Graph grids", "Grid", true, {"LineChart", "AreaChart"}},
+        {"BarStacked", "Stack first bar chart", "Stacked", false, {"BarChart"}},
+        {"PieClockwise", "Clockwise slices", "Clockwise", true, {"PieChart", "DonutChart"}},
+        {"ScatterGrid", "Scatter grid", "Grid", true, {"ScatterChart"}}}) do
+        fRemember(tAction[1], Controls.checkbox(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], Selected = tAction[4], OnChange = function(bValue)
+            for _, sKey in ipairs(tAction[5]) do tWidgets[sKey]["set"..tAction[3]](bValue, true); end
+        end})));
+    end
+    for _, tAction in ipairs({{"ChartLineWidth", "LineWidth", 1, 8, 2, 1, {"LineChart", "AreaChart"}},
+        {"ChartAreaOpacity", "AreaOpacity", 0, 100, 30, 0.01, {"AreaChart"}},
+        {"BarGap", "BarGap", 0, 90, 20, 0.01, {"BarChart", "StackedBarChart", "HorizontalBarChart"}},
+        {"DonutHole", "HoleSize", 0, 90, 50, 0.01, {"DonutChart"}},
+        {"PieGap", "SliceGap", 0, 20, 0, 1, {"PieChart", "DonutChart"}},
+        {"ScatterMarkerSize", "MarkerSize", 3, 20, 7, 1, {"ScatterChart"}}}) do
+        fRemember(tAction[1], Controls.slider(fDemoParent(tAction[1], oInput), fOptions({Min = tAction[3], Max = tAction[4], Value = tAction[5], Step = 1, OnChange = function(nValue)
+            for _, sKey in ipairs(tAction[7]) do tWidgets[sKey]["set"..tAction[2]](nValue * tAction[6], true); end
+        end})));
+    end
+
+    -- Bind every example before layout; the gallery owns only presentation.
+    oGallery.bind(tWidgets);
+
+    --[[!
+    @fqxn wxLuma.Tests.UI.fLayout
+    @desc Fits the category gallery and its scrollable documented containers.
+        Nested examples keep their own native Content parents and input policies.
+    !]]
     local function fLayout()
-        local nW, nH = tWindow.Control:GetClientSizeWH(); if (nW < 320 or nH < 240) then return; end
+        local nW, nH = tWindow.Control:GetClientSizeWH();
+        if (nW < 320 or nH < 240) then return; end
         local tContent = tWindow.getGeometry().Content;
         tTabs.layout(tContent.x, tContent.y, tContent.width, tContent.height - 42);
-        local nWidth, nHeight = oOriginal:GetClientSizeWH();
-        tWidgets.Checkbox.layout(12, 252, math.floor(nWidth * 0.42), 36);
-        tWidgets.DisabledCheckbox.layout(12, 295, math.floor(nWidth * 0.42), 36);
-        local nRadioX = math.floor(nWidth * 0.45);
-        for nIndex = 1, 3 do tWidgets["Radio" .. nIndex].layout(nRadioX, 248 + (nIndex - 1) * 30, 175, 32); end
-        tWidgets.Button.layout(nWidth - 186, 250, 174, 40); tToggle.layout(nWidth - 186, 296, 174, 40);
-        tWidgets.Slider.layout(12, 394, math.floor(nWidth * 0.39), 44);
-        tWidgets.VerticalSlider.layout(nRadioX + 20, 384, 44, math.min(148, nHeight - 390));
-        tWidgets.Spinner.layout(math.floor(nWidth * 0.66), 394, 140, 40);
-        local nInputW, nInputH = oInput:GetClientSizeWH();
-        local nRightW = math.max(200, nInputW - 370);
-        tWidgets.List.layout(16, 46, 310, nInputH - 62);
-        tWidgets.Dropdown.layout(354, 46, nRightW, 40);
-        tWidgets.ListMultiSelect.layout(354, 430, nRightW, 36);
-        tWidgets.Text.layout(354, 136, nRightW, 40); tWidgets.DisabledText.layout(354, 226, nRightW, 40);
-        tWidgets.Scrollbar.layout(354, 320, nRightW, 26);
-
-        local nResourceW = oResources:GetClientSizeWH();
-        tWidgets.CircularProgress.layout(nResourceW - 210, 40, 160, 140);
-        tWidgets.CircularDirection.layout(nResourceW - 230, 190, 200, 36);
-        fDirectionalLayout();
-        tWidgets.ProgressOrigin.layout(nResourceW - 420, 190, 180, 36);
-        tWidgets.CircularStartAngle.layout(16, 330, 250, 36);
-        for nIndex, sKey in ipairs({"Health", "Mana", "Progress"}) do tWidgets[sKey].layout(16, 46 + (nIndex - 1) * 46, math.min(500, nResourceW - 450), 34); end
-        tWidgets.MeterSlider.layout(16, 184, math.min(500, nResourceW - 450), 44);
-        tPanelToggle.layout(16, 236, 210, 40);
-        tWidgets.TooltipBoundary.layout(242, 236, 240, 40);
-        tWidgets.TooltipOverflow.layout(498, 236, 240, 40);
-        tWidgets.ProgressSkin.layout(16, 282, 300, 36);
-        tWidgets.CircularProgressSkin.layout(354, 282, 300, 36);
-        local nPanelW, nPanelH = tPanel.Control:GetSizeWH();
-        if (nPanelW < 260 or nPanelH < 140) then nPanelW, nPanelH = 440, 190; end
-        tPanel.layout(16, 380, nPanelW, nPanelH); tPanel.resize(nPanelW, nPanelH);
-        local nTreeExWidth, nTreeExHeight = oTreeExPage:GetClientSizeWH();
-        local nTreeExHalf = math.floor(nTreeExWidth / 2);
-        tWidgets.CheckListToggle.layout(16, 12, nTreeExHalf - 24, 36);
-        tWidgets.CheckTreeToggle.layout(nTreeExHalf + 8, 12, nTreeExHalf - 24, 36);
-        tWidgets.CheckListMulti.layout(16, 52, nTreeExHalf - 24, 36);
-        tWidgets.TreeExMulti.layout(nTreeExHalf + 8, 52, nTreeExHalf - 24, 36);
-        tWidgets.TreeExPropagation.layout(nTreeExHalf + 8, 92, nTreeExHalf - 24, 36);
-        local nTreeExDataHeight = math.max(140, nTreeExHeight - 280);
-        tWidgets.CheckListEx.layout(16, 140, nTreeExHalf - 24, nTreeExDataHeight);
-        tWidgets.TreeEx.layout(nTreeExHalf + 8, 140, nTreeExHalf - 24, nTreeExDataHeight);
-        tWidgets.TreeExHelp.layout(16, 152 + nTreeExDataHeight, nTreeExWidth - 32,
-            math.max(80, nTreeExHeight - nTreeExDataHeight - 168));
-        local nTabsWidth, nTabsHeight = oTabsPage:GetClientSizeWH();
-        local nTabButtonWidth = math.floor((nTabsWidth - 48) / 3);
-        for nIndex, sKey in ipairs({"TabsMode", "TabsPosition", "TabsAdd", "TabsRemove", "TabsRename", "TabsMove"}) do
-            tWidgets[sKey].layout(16 + ((nIndex - 1) % 3) * (nTabButtonWidth + 8),
-                16 + math.floor((nIndex - 1) / 3) * 48, nTabButtonWidth, 40);
-        end
-        tWidgets.ExampleTabs.layout(16, 124, nTabsWidth - 32, math.max(100, nTabsHeight - 140));
-        local nToolsWidth, nToolsHeight = oTools:GetClientSizeWH();
-        tWidgets.Toolbar.layout(16, 16, nToolsWidth - 32, 48);
-        tWidgets.StatusBar.layout(16, 82, nToolsWidth - 32, 44);
-        tWidgets.ColorPicker.layout(16, 154, 280, 48);
-        tWidgets.ColorPickerAlpha.layout(316, 154, 280, 48);
-        tWidgets.ToolbarAdd.layout(16, 224, 240, 40);
-        tWidgets.ToolbarRemove.layout(276, 224, 280, 40);
-        tWidgets.ToolsHelp.layout(16, 294, nToolsWidth - 32, math.max(64, nToolsHeight - 310));
-        local nEditorWidth, nEditorHeight = oEditors:GetClientSizeWH();
-        tWidgets.ToggleButton.layout(16, 20, 240, 44);
-        tWidgets.NumericField.layout(16, 92, 240, 40);
-        tWidgets.NumericPlain.layout(16, 152, 240, 40);
-        tWidgets.NumericReadOnly.layout(16, 212, 240, 40);
-        tWidgets.DialogOpen.layout(300, 20, 300, 44);
-        tWidgets.DialogModalOpen.layout(300, 84, 300, 44);
-        tWidgets.EditorHelp.layout(16, 290, nEditorWidth - 32, math.max(64, nEditorHeight - 310));
-        local nMenuWidth, nMenuHeight = oMenus:GetClientSizeWH();
-        local nMenuHalf = math.floor(nMenuWidth / 2);
-        tWidgets.ContextMenuTarget.layout(16, 18, nMenuHalf - 32, 50);
-        tWidgets.RadialMenuTarget.layout(nMenuHalf + 16, 18, nMenuWidth - nMenuHalf - 32, 50);
-        tWidgets.MenuSelection.layout(16, 82, nMenuWidth - 32, 56);
-        tWidgets.MenuDirection.layout(16, 132, 300, 40);
-        tWidgets.MenuShape.layout(360, 132, 300, 40);
-        tWidgets.MenuAngle.layout(16, 214, 180, 40);
-        tWidgets.MenuMinRadius.layout(360, 214, 140, 40);
-        tWidgets.MenuMaxRadius.layout(516, 214, 140, 40);
-        tWidgets.MenuSpacing.layout(16, 300, 300, 44);
-        tWidgets.MenuClipImage.layout(360, 300, math.max(250, nMenuWidth - 376), 40);
-        tWidgets.MenuHelp.layout(16, 370, nMenuWidth - 32, math.max(80, nMenuHeight - 386));
-        local nOrbWidth, nOrbHeight = oOrbs:GetClientSizeWH();
-        local nOrbColumn = math.floor(nOrbWidth / 3);
-        local nOrbDiameter = math.max(32, math.min(220, nOrbColumn - 48, nOrbHeight - 460));
-        local nOrbButtonY = nOrbDiameter + 78;
-
-        for nIndex, sPrefix in ipairs({"Globe", "Radial", "Iris"}) do
-            local nColumnX = (nIndex - 1) * nOrbColumn;
-            tWidgets[sPrefix.."Heading"].layout(nColumnX + 16, 12, nOrbColumn - 32, 36);
-            tWidgets[sPrefix.."Progress"].layout(nColumnX + math.floor((nOrbColumn - nOrbDiameter) / 2),
-                60, nOrbDiameter, nOrbDiameter);
-        end
-
-        tWidgets.GlobeOrigin.layout(24, nOrbButtonY, nOrbColumn - 48, 40);
-        tWidgets.RadialDirection.layout(nOrbColumn + 24, nOrbButtonY, nOrbColumn - 48, 40);
-        tWidgets.IrisDirection.layout(2 * nOrbColumn + 24, nOrbButtonY, nOrbColumn - 48, 40);
-        tWidgets.GlobeSkin.layout(24, nOrbButtonY + 48, nOrbColumn - 48, 36);
-        tWidgets.RadialSkin.layout(nOrbColumn + 24, nOrbButtonY + 48, nOrbColumn - 48, 36);
-        tWidgets.IrisBlades.layout(2 * nOrbColumn + 24, nOrbButtonY + 48, nOrbColumn - 48, 36);
-        tWidgets.OrbValue.layout(24, nOrbButtonY + 104, nOrbWidth - 48, 44);
-        tWidgets.OrbReserved.layout(24, nOrbButtonY + 152, nOrbWidth - 48, 44);
-        tWidgets.GlobeReserveOrigin.layout(24, nOrbButtonY + 202, nOrbColumn - 48, 36);
-        tWidgets.RadialReserveDirection.layout(nOrbColumn + 24, nOrbButtonY + 202, nOrbColumn - 48, 36);
-        tWidgets.IrisPicture.layout(2 * nOrbColumn + 24, nOrbButtonY + 202, nOrbColumn - 48, 36);
-        tWidgets.CircularPie.layout(290, 330, 330, 36);
-        tWidgets.OrbHelp.layout(24, nOrbButtonY + 286, nOrbWidth - 48, math.max(32, nOrbHeight - nOrbButtonY - 302));
-        local nDisplayWidth = oDisplay:GetClientSizeWH();
-        local nTextWidth = math.floor((nDisplayWidth - 48) / 2);
-        tWidgets.Label.layout(16, 16, nDisplayWidth - 32, 48);
-        tWidgets.WrappedLabel.layout(16, 80, nTextWidth, 220);
-        tWidgets.AlignedLabel.layout(16, 320, nTextWidth, 100);
-        tWidgets.Image.layout(32 + nTextWidth, 80, nTextWidth, 300);
-        tWidgets.ImageMode.layout(32 + nTextWidth, 400, nTextWidth, 42);
-        local nContainerWidth, nContainerHeight = oContainers:GetClientSizeWH();
-        tWidgets.ScrollReset.layout(16, 12, 200, 40);
-        tWidgets.ScrollEnd.layout(232, 12, 200, 40);
-        tWidgets.SplitToggle.layout(448, 12, 240, 40);
-        local nScrollHeight = math.floor(math.max(160, nContainerHeight - 84) * 0.58);
-        tWidgets.ScrollContainer.layout(16, 68, nContainerWidth - 32, nScrollHeight);
-        local nSplitY = 80 + nScrollHeight;
-        tWidgets.SplitContainer.layout(16, nSplitY, nContainerWidth - 32,
-            math.max(60, nContainerHeight - nSplitY - 16));
+        oGallery.layout();
         fSplitChildren();
-        local nDataWidth, nDataHeight = oData:GetClientSizeWH();
-        local nTreeWidth = math.floor((nDataWidth - 48) * 0.36);
-        local nTableX = 32 + nTreeWidth;
-        local nTableWidth = nDataWidth - nTableX - 16;
-        tWidgets.TreeHeading.layout(16, 12, nTreeWidth, 30);
-        tWidgets.TableHeading.layout(nTableX, 12, nTableWidth, 30);
-        local nDataControlHeight = math.max(80, math.floor((nDataHeight - 160) * 0.58));
-        local nDataButtonY = 66 + nDataControlHeight;
-        tWidgets.Tree.layout(16, 54, nTreeWidth, nDataControlHeight);
-        tWidgets.Table.layout(nTableX, 54, nTableWidth, nDataControlHeight);
-        local nTreeButtonWidth = math.floor((nTreeWidth - 8) / 2);
-        tWidgets.TreeAdd.layout(16, nDataButtonY, nTreeButtonWidth, 40);
-        tWidgets.TreeRemove.layout(24 + nTreeButtonWidth, nDataButtonY, nTreeButtonWidth, 40);
-        tWidgets.TableAdd.layout(nTableX, nDataButtonY, 130, 40);
-        tWidgets.TableRemove.layout(nTableX + 142, nDataButtonY, 130, 40);
-        tWidgets.TableMultiSelect.layout(nTableX + 284, nDataButtonY, math.max(120, nTableWidth - 284), 40);
-        local nListExY = nDataButtonY + 82;
-        oListExHeading:SetSize(16, nDataButtonY + 52, nDataWidth - 32, 24);
-        tWidgets.ListEx.layout(16, nListExY, nDataWidth - 220, math.max(64, nDataHeight - nListExY - 16));
-        tWidgets.ListExUpdate.layout(nDataWidth - 188, nListExY, 172, 36);
-        tWidgets.ListExAdd.layout(nDataWidth - 188, nListExY + 44, 172, 36);
-        tWidgets.ListExRemove.layout(nDataWidth - 188, nListExY + 88, 172, 36);
-        tWidgets.ListExMultiSelect.layout(nDataWidth - 188, nListExY + 132, 172, 34);
+        local nWidth = tWidgets.CollapsiblePanel.Content:GetClientSizeWH();
+        tWidgets.DetailsText.layout(8, 8, math.max(1, nWidth - 16), 42);
+        nWidth = tWidgets.Accordion.getSection("appearance").Content:GetClientSizeWH();
+        tWidgets.AppearanceText.layout(8, 8, math.max(1, nWidth - 16), 42);
+        nWidth = tWidgets.Accordion.getSection("behavior").Content:GetClientSizeWH();
+        tWidgets.BehaviorCheck.layout(8, 8, math.max(1, nWidth - 16), 36);
     end
     local oSizer = wx.wxBoxSizer(wx.wxVERTICAL); oSizer:Add(tWindow.Control, 1, wx.wxEXPAND); oFrame:SetSizer(oSizer);
     tWindow.Control:Connect(wx.wxEVT_SIZE, function(oEvent) if (not bDisposed) then fLayout(); end; oEvent:Skip(); end);
     oFrame:Connect(wx.wxEVT_CHAR_HOOK, function(oEvent)
         if (oEvent:GetKeyCode() == wx.WXK_ESCAPE) then
             if (tWidgets.Dropdown.isOpen()) then tWidgets.Dropdown.close(false);
+            elseif (tWidgets.ComboBox.isOpen()) then tWidgets.ComboBox.close(false);
             elseif (tPanel.Control:HasCapture()) then tPanel.handleKey("down", wx.WXK_ESCAPE);
             elseif (tWidgets.SplitContainer.Control:HasCapture()) then
                 tWidgets.SplitContainer.handleKey("down", wx.WXK_ESCAPE);
-            else oFrame:Close(); end
+            else
+                local oFocus = wx.wxWindow.FindFocus();
+                if (oFocus and wx.wxDynamicCast(oFocus, "wxTextCtrl")) then oEvent:Skip();
+                else oFrame:Close(); end
+            end
         else oEvent:Skip(); end
     end);
     oFrame:Connect(wx.wxEVT_ACTIVATE, function(oEvent)
@@ -1225,10 +1338,15 @@ return function(oParent)
     end);
     oFrame:Connect(wx.wxEVT_CLOSE_WINDOW, function(oEvent)
         bDisposed = true;
+        -- Stop asynchronous playback before releasing its native resources.
+        wx.wxSound.Stop();
+        oHoverSound:delete(); oClickSound:delete();
         for _, tTip in ipairs(tTips) do tTip.destroy(); end
         for _, tWidget in pairs(tWidgets) do tWidget.destroy(); end
-        tSkin.destroy(); tWindow.destroy(); oEvent:Skip();
+        oGallery.destroy();
+        tWindow.destroy(); tSkin.destroy(); oEvent:Skip();
     end);
     oFrame:SetClientSize(wx.wxSize(1120, 900)); oFrame:Centre(); oFrame:Show(true); fLayout();
-    return {Frame = oFrame, Window = tWindow, Widgets = tWidgets, Skin = tSkin, Group = tGroup, Layout = fLayout, Tooltips = tTips};
+    return {Frame = oFrame, Window = tWindow, Widgets = tWidgets, Skin = tSkin, Group = tGroup,
+        Layout = fLayout, Tooltips = tTips, Gallery = oGallery};
 end;
