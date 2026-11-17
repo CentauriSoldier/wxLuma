@@ -356,7 +356,7 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     check(#tWorkbench.Widgets.Tabs.Pages == #tWorkbench.Gallery.Categories, "Every gallery category has a tab.");
     tWorkbench.Gallery.show("Toolbar", true);
     tWorkbench.Layout();

@@ -1,3 +1,5 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
+local _Border = require("wxLuma.Core.ControlBorder");
 local _Containment   = require("wxLuma.Core.ControlContainment");
 local _ControlObject = require("wxLuma.Core.ControlObject");
 local _Events        = require("wxLuma.Core.ControlEvents");
@@ -16,9 +18,10 @@ local drawFrame      = require("wxLuma.Core.ControlDrawing").frame;
 @ret table oComponent Control, show/hide/setText/setEnabled/destroy/isShown.
 !]]
 function Tooltip.create(oTarget, tOptions)
+    tOptions = _Theme.options(tOptions, oTarget);
     assert(tOptions and tOptions.Skin and type(tOptions.Text) == "string", "Tooltip requires Skin and Text.");
     oTarget = _Containment.native(oTarget);
-    local oPopup     = _wx.wxPopupWindow(oTarget, _wx.wxBORDER_NONE);
+    local oPopup     = _wx.wxPopupWindow(oTarget, _Border.style(tOptions));
     local oComponent = _ControlObject.create({
         Control  = oPopup,
         Text     = tOptions.Text,
@@ -131,7 +134,11 @@ function Tooltip.create(oTarget, tOptions)
             return;
         end
         local nWidth, nHeight = oPopup:GetClientSizeWH();
-        drawFrame(oDC, 0, 0, nWidth, nHeight, true, true);
+        if (_Theme.isTheme(tOptions.Skin) and tOptions.Skin.getName() == "System") then
+            tOptions.Skin.fill(oDC, "Background", 0, 0, nWidth, nHeight);
+        else
+            drawFrame(oDC, 0, 0, nWidth, nHeight, true, true, tOptions.Skin);
+        end
         tOptions.Skin.text(oDC, oComponent.Text, 12, 10, true);
         oDC:delete();
     end);
@@ -189,6 +196,7 @@ function Tooltip.create(oTarget, tOptions)
             end
         end
     end);
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

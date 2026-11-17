@@ -249,7 +249,7 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     _wx.wxYield();
     local oWorkbenchTabs = tWorkbench.Widgets.Tabs;
     local nCategories = #tWorkbench.Gallery.Categories;

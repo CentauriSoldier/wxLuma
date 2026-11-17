@@ -30,10 +30,10 @@ end
 @param wxWindow oTarget Component-owned native surface.
 @param number nType Native event type.
 !]]
-local function mouse(oTarget, nType)
+local function mouse(oTarget, nType, nX, nY)
     local jEvent = _wx.wxMouseEvent(nType);
-    jEvent.GetX = function() return 10; end;
-    jEvent.GetY = function() return 10; end;
+    jEvent.GetX = function() return nX or oTarget.TestHitX or 10; end;
+    jEvent.GetY = function() return nY or oTarget.TestHitY or 10; end;
     jEvent:SetId(oTarget:GetId());
     jEvent:SetEventObject(oTarget);
     oTarget:GetEventHandler():ProcessEvent(jEvent);
@@ -48,6 +48,31 @@ end
 @param wxWindow oTarget Native interaction surface belonging to the object.
 !]]
 local function exercise(oComponent, oTarget)
+    -- Shape-aware controls need a point on their artwork, not host padding.
+    if (oComponent.PointerHitTest and oTarget == oComponent.Control) then
+        local nWidth, nHeight = oTarget:GetClientSizeWH();
+        local bFound = false;
+        for nY = 0, nHeight - 1 do
+            for nX = 0, nWidth - 1 do
+                if (oComponent.PointerHitTest(nX, nY)) then
+                    oTarget.TestHitX, oTarget.TestHitY, bFound = nX, nY, true; break;
+                end
+            end
+            if (bFound) then break; end
+        end
+        check(bFound, "Interactive artwork has an accepted point.");
+        local nOutsideClicks = 0;
+        oComponent.on("rightClick", function() nOutsideClicks = nOutsideClicks + 1; end);
+        mouse(oTarget, _wx.wxEVT_RIGHT_DOWN, -1, -1);
+        mouse(oTarget, _wx.wxEVT_RIGHT_UP, -1, -1);
+        check(nOutsideClicks == 0, "Outside points cannot emit button clicks.");
+        if (not oComponent.PointerHitTest(0, 0)) then
+            mouse(oTarget, _wx.wxEVT_RIGHT_DOWN, 0, 0);
+            mouse(oTarget, _wx.wxEVT_RIGHT_UP, 0, 0);
+            check(nOutsideClicks == 0, "Transparent artwork or host padding cannot emit button clicks.");
+        end
+        oComponent.off("rightClick");
+    end
     local tCounts = {pointerEnter = 0, pointerLeave = 0, rightClick = 0};
     for sName in pairs(tCounts) do
         oComponent.on(sName, function(oSource, tEvent)

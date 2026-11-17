@@ -99,7 +99,10 @@ local function run()
     local tItems = oCombo.getItems(); tItems[1] = "changed";
     check(oCombo.getItems()[1] == "Alpha", "Combo copies items.");
     _Frame:Show(true); _wx.wxGetApp():Yield();
-    check(oCombo.open(), "Combo opens."); oCombo.List.setValue(1); oCombo.close(false);
+    check(oCombo.open(), "Combo opens.");
+    check(oCombo.List.getVisibleCount() == 2, "Popup viewport fits every requested row.");
+    check(not oCombo.List.Scrollbar.Control:IsShown(), "Complete suggestions need no scrollbar.");
+    oCombo.List.setValue(1); oCombo.close(false);
     check(oCombo.getValue() == "Beta", "Combo preview cancellation.");
     check(oCombo.open(), "Combo reopens."); oCombo.List.setValue(1); oCombo.List.handleKey("down", _wx.WXK_RETURN);
     check(oCombo.getValue() == "Alpha" and not oCombo.isOpen(), "List Enter commits combo text.");

@@ -135,6 +135,7 @@ function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
 
         tBound[oTarget] = true;
         local tPressed = {};
+        local bShapeHover = false;
         tPressResets[#tPressResets + 1] = function()
             tPressed = {};
         end;
@@ -151,6 +152,23 @@ function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
                     local tData = fPayload and fPayload(jEvent) or {};
                     tData.NativeEvent = jEvent;
                     tData.Target = oTarget;
+                    if (oComponent.PointerHitTest and tData.X ~= nil) then
+                        local bInside = sName ~= "pointerLeave" and oComponent.PointerHitTest(tData.X, tData.Y);
+                        if (sName == "pointerEnter" or sName == "pointerLeave" or sName == "pointerMove") then
+                            if (bInside ~= bShapeHover) then
+                                bShapeHover = bInside;
+                                tEvents.emit(bInside and "pointerEnter" or "pointerLeave", tData);
+                            end
+                            if (sName ~= "pointerMove") then jEvent:Skip(); return; end
+                        end
+                        -- A captured drag may continue outside the dial, but
+                        -- empty margins never start interaction or emit clicks.
+                        local bCapturedEvent = (sName == "pointerMove" or sName:sub(-2) == "Up")
+                            and (tPressed.left or tPressed.right or tPressed.middle);
+                        if (not bInside and not bCapturedEvent) then
+                            jEvent:Skip(); return;
+                        end
+                    end
                     tEvents.emit(sName, tData);
 
                     if (fAfter) then
@@ -210,6 +228,7 @@ function ControlEvents.attach(oComponent, tTargets, tExtraEvents)
                 local nX, nY = tData.NativeEvent:GetX(), tData.NativeEvent:GetY();
                 local bClick = tPressed[sButton] and nX >= 0 and nY >= 0 and
                     nX < nWidth and nY < nHeight;
+                if (bClick and oComponent.PointerHitTest) then bClick = oComponent.PointerHitTest(tData.X, tData.Y); end
                 tPressed[sButton] = nil;
 
                 if (bClick) then

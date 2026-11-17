@@ -219,7 +219,7 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     _wx.wxYield();
 
     for sName, oWidget in pairs(tWorkbench.Widgets) do

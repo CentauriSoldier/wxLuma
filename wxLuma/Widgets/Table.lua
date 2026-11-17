@@ -1,3 +1,5 @@
+local _Border = require("wxLuma.Core.ControlBorder");
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx             = require("wx");
 local _ControlSurface = require("wxLuma.Core.ControlSurface");
 local _ControlEvents  = require("wxLuma.Core.ControlEvents");
@@ -16,6 +18,7 @@ local Table           = {};
 @ret table oComponent Public proxy with TableControl and standard surface/events API.
 !]]
 function Table.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
     assert(type(tOptions.Columns) == "table" and #tOptions.Columns > 0, "Table requires Columns.");
     local tColumns = {};
 
@@ -56,11 +59,11 @@ function Table.create(oParent, tOptions)
     local bMulti = tOptions.MultiSelect == true;
     local tSelected = {};
     local sFocus;
-    local oComponent = _ControlSurface.create(oParent, tOptions, "Table");
+    local oComponent = _ControlSurface.create(oParent, _Border.hostOptions(tOptions), "Table");
     local oTable = _wx.wxListCtrl(oComponent.Control, _wx.wxID_ANY,
         _wx.wxDefaultPosition, _wx.wxDefaultSize,
-        _wx.wxBORDER_NONE + _wx.wxLC_REPORT + (bMulti and 0 or _wx.wxLC_SINGLE_SEL));
-    oComponent.TableControl = oTable;
+        _Border.style(tOptions, _wx.wxLC_REPORT + (bMulti and 0 or _wx.wxLC_SINGLE_SEL)));
+    oComponent.TableControl, oComponent.BorderControl = oTable, oTable;
     oTable:SetFont(oComponent.Skin.Font);
     oTable:SetBackgroundColour(_wx.wxColour(24, 29, 36));
     oTable:SetTextColour(_wx.wxColour(208, 218, 230));
@@ -640,6 +643,7 @@ function Table.create(oParent, tOptions)
     fRender();
     oComponent.setValue(tOptions.Value);
     oComponent.onEnable(tOptions.Enabled ~= false);
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

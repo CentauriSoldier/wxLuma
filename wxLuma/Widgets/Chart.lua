@@ -1,3 +1,4 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx = require("wx");
 local _Surface = require("wxLuma.Core.ControlSurface");
 local _Artwork = require("wxLuma.Core.ControlArtwork");
@@ -20,6 +21,7 @@ local Chart = {};
     accept false/nil for automatic or {Min,Max}. State contains plain data only.
 !]]
 function Chart.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
     assert(tOptions and tOptions.Skin, "Chart requires Skin.");
     local oComponent = _Surface.create(oParent, tOptions, "Chart");
     local sArtwork = tOptions.Artwork or "Chart";
@@ -1135,16 +1137,26 @@ function Chart.create(oParent, tOptions)
         return true;
     end;
     oComponent.onEnable = function(bEnabled) oTooltip.setEnabled(bEnabled and tSettings.Tooltips); fInvalidate(); end;
-    oComponent.onDestroy = function()
+    --[[!
+    @fqxn wxLuma.UI.Chart.onThemeChanged
+    @desc Releases decorative raster copies and redraws without altering series,
+        selection, zoom or application data colors.
+    !]]
+    oComponent.onThemeChanged = function()
         if (tRender) then tRender.Bitmap:delete(); tRender = nil; end
         for _, oImage in pairs(tPartSources) do oImage:delete(); end
         for _, oBitmap in pairs(tPartBitmaps) do oBitmap:delete(); end
         tPartSources, tPartBitmaps, tPartOrder = {}, {}, {};
         tLayerShapes = {};
+        fInvalidate();
+    end;
+    oComponent.onDestroy = function()
+        oComponent.onThemeChanged();
         oTooltipTimer:Stop(); oComponent.Control:Disconnect(nTooltipId, _wx.wxEVT_TIMER); oTooltipTimer:delete();
         oTooltip.destroy(); tArt.destroy(); tSeries, tById, tHits, tLegends, tFormatters = {}, {}, {}, {}, {};
     end;
     oComponent.setSeries(tOptions.Series or {});
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

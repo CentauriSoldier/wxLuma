@@ -395,7 +395,7 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Gallery.show("CheckTreeToggle", true);
     tWorkbench.Layout();
     _wx.wxYield();

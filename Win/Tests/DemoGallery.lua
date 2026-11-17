@@ -82,14 +82,14 @@ function DemoGallery.create(oTabs, oSkin)
                 if (not bDisposed) then
                     local nWidth, nHeight = oCard:GetClientSizeWH();
                     tArt.part(oDC, "Surface Normal", 0, 0, nWidth, nHeight);
-                    oSkin.draw(oDC, "Toolbar Item Normal", 0, 0, nWidth, 42);
+                    oSkin.draw(oDC, "Toolbar Item Normal", 0, 0, nWidth, 32);
                     tArt.part(oDC, "Separator", 0, nHeight - 1, nWidth, 1);
                     tArt.part(oDC, "Separator", 0, 0, 1, nHeight);
                     tArt.part(oDC, "Separator", nWidth - 1, 0, 1, nHeight);
                     oDC:SetFont(oHeadingFont); oDC:SetTextForeground(tArt.color("Text Normal"));
                     oDC:SetBackgroundMode(_wx.wxTRANSPARENT);
-                    oDC:SetClippingRegion(16, 0, math.max(1, nWidth - 32), 42);
-                    oDC:DrawText(tCardSpec.Title, 16, 10); oDC:DestroyClippingRegion();
+                    oDC:SetClippingRegion(16, 0, math.max(1, nWidth - 32), 32);
+                    oDC:DrawText(tCardSpec.Title, 16, 6); oDC:DestroyClippingRegion();
                 end
                 oDC:delete();
             end);
@@ -142,11 +142,16 @@ function DemoGallery.create(oTabs, oSkin)
             elseif (sMode == "sliders") then
                 nW, nH = nIndex == 1 and nWidth or 44, nIndex == 1 and 44 or 180;
                 nY = nIndex == 1 and 0 or 56;
-            elseif (sMode == "columns" or sMode == "orbs") then
+            elseif (sMode == "columns" or sMode == "orbs" or sMode == "switches") then
                 local nColumn = math.floor((nWidth - (#tKeys - 1) * 12) / #tKeys);
                 nW, nX = nColumn, (nIndex - 1) * (nColumn + 12);
                 if (sMode == "orbs") then
-                    nW, nH = math.min(220, nColumn), math.min(220, nColumn);
+                    nW, nH = math.min(160, nColumn), math.min(160, nColumn);
+                    nX = nX + math.floor((nColumn - nW) / 2);
+                elseif (sMode == "switches") then
+                    local bVertical = oWidget.getOrientation() == "vertical";
+                    nW, nH = math.min(nColumn, bVertical and 32 or 76), bVertical and 76 or 32;
+                    nY = math.floor((nHeight - nH) / 2);
                     nX = nX + math.floor((nColumn - nW) / 2);
                 end
             elseif (sMode == "imageButton") then nW = math.min(200, nWidth);
@@ -159,7 +164,7 @@ function DemoGallery.create(oTabs, oSkin)
                 nH = math.floor((nHeight - (#tKeys - 1) * 8) / #tKeys);
                 nY = (nIndex - 1) * (nH + 8);
                 if (oWidget.Kind == "Button" or oWidget.Kind == "ToggleButton" or oWidget.Kind == "NumericField"
-                    or oWidget.Kind == "ColorPicker") then nW = math.min(420, nWidth);
+                    or oWidget.Kind == "ColorPicker") then nW = math.min(200, nWidth);
                 elseif (oWidget.Kind == "Spinner") then nW = math.min(220, nWidth); end
             end
             if (not oWidget.isFloating or not oWidget.isFloating()) then
@@ -182,9 +187,9 @@ function DemoGallery.create(oTabs, oSkin)
             fPreview(tCard, nInner, tSpec.Height);
             return tCard.LayoutHeight;
         end
-        local nY = 54;
+        local nY = 44;
         nY = nY + fWrap(tCard.Description, tSpec.Description, 16, nY, nInner) + 10;
-        nY = nY + fWrap(tCard.Usage, "Usage: "..tSpec.Usage.."\nAPI: "..tSpec.API, 16, nY, nInner) + 18;
+        nY = nY + fWrap(tCard.Usage, "Usage: "..tSpec.Usage.."\nAPI: "..tSpec.API, 16, nY, nInner) + 12;
         tCard.PreviewY = nY;
         tCard.Preview:SetSize(16, nY, nInner, tSpec.Height);
         fPreview(tCard, nInner, tSpec.Height);
@@ -194,20 +199,21 @@ function DemoGallery.create(oTabs, oSkin)
             local nColumns = math.max(1, math.min(3, math.floor((nInner + 12) / 260)));
             local nCell = math.floor((nInner - (nColumns - 1) * 12) / nColumns);
             local nRows = math.ceil(#tActions / nColumns);
-            tCard.Actions:SetSize(16, nY + 14, nInner, nRows * 68);
+            tCard.Actions:SetSize(16, nY + 10, nInner, nRows * 60);
             for nIndex, sKey in ipairs(tActions) do
                 local oWidget = assert(tWidgets[sKey], "Missing demo action: "..sKey);
                 local nX = ((nIndex - 1) % nColumns) * (nCell + 12);
-                local nTop = math.floor((nIndex - 1) / nColumns) * 68;
+                local nTop = math.floor((nIndex - 1) / nColumns) * 60;
                 local oLabel = tCard.ActionLabels[sKey];
                 if (oLabel) then oLabel:SetSize(nX, nTop, nCell, 22); end
-                local nActionHeight = oWidget.Kind == "Checkbox" and 36 or oWidget.Kind == "Label" and 56 or 40;
-                oWidget.layout(nX, nTop + (oLabel and 24 or 0), nCell, nActionHeight);
+                local nActionHeight = oWidget.Kind == "Checkbox" and 32 or oWidget.Kind == "Label" and 56 or 36;
+                local nActionWidth = oWidget.Kind == "Button" and math.min(220, nCell) or nCell;
+                oWidget.layout(nX, nTop + (oLabel and 24 or 0), nActionWidth, nActionHeight);
             end
-            nY = nY + 14 + nRows * 68;
+            nY = nY + 10 + nRows * 60;
             tCard.Actions:Show(true);
         else tCard.Actions:Hide(); end
-        tCard.LayoutWidth, tCard.LayoutHeight = nWidth, nY + 18;
+        tCard.LayoutWidth, tCard.LayoutHeight = nWidth, nY + 12;
         return tCard.LayoutHeight;
     end
 
@@ -230,7 +236,7 @@ function DemoGallery.create(oTabs, oSkin)
                     local nCardHeight = fCardLayout(tCard, nCardWidth);
                     tCard.Y, tCard.Height = nY, nCardHeight;
                     tCard.Control:SetSize(16, nY, nCardWidth, nCardHeight);
-                    nY = nY + nCardHeight + 18;
+                    nY = nY + nCardHeight + 12;
                 end
                 tCategory.Scroll.setContentSize(0, nY);
             end

@@ -1,3 +1,5 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
+local _Border = require("wxLuma.Core.ControlBorder");
 local _ControlObject = require("wxLuma.Core.ControlObject");
 local _wx            = require("wx");
 local _ControlInput  = require("wxLuma.Core.ControlInput");
@@ -70,6 +72,8 @@ end
 !]]
 
 function Radio.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
+    tOptions = _Border.withDefault(tOptions, _wx.wxBORDER_NONE);
     return _ControlInput.create(oParent, tOptions, "Radio", function(oComponent, tInput)
         local oSkin, oGroup = tOptions.Skin, tOptions.Group;
         tInput.Toggle = true;
@@ -144,7 +148,16 @@ function Radio.create(oParent, tOptions)
 
         -- Draw artwork for the current value and input state.
         tInput.draw = function(oDC, nWidth, nHeight, sState)
-
+            if (_Theme.isTheme(oSkin) and oSkin.getName() == "System") then
+                local nW, nH = oSkin.indicatorSize(oComponent.Control);
+                tInput.drawPart(oDC, "Radio"..(oComponent.Selected and " On " or " Off ")..sState,
+                    0, math.floor((nHeight - nH) / 2), nW, nH);
+                oDC:SetFont(oSkin.Font);
+                local _, nTextH = oDC:GetTextExtent(oComponent.Text);
+                oSkin.text(oDC, oComponent.Text, nW + oComponent.Control:FromDIP(6),
+                    math.floor((nHeight - nTextH) / 2), tInput.enabled());
+                return;
+            end
             tInput.drawPart(oDC, "Radio" .. (oComponent.Selected and " On " or " Off ") .. sState, 0,
                 math.floor((nHeight - 32) / 2));
             oSkin.text(oDC, oComponent.Text, 40, math.floor((nHeight - 18) / 2), tInput.enabled());

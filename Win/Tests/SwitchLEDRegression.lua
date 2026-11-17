@@ -140,7 +140,7 @@ local function run()
     end;
     oSwitch.setEnabled(true); oSwitch.Control:SetFocus();
     oSwitch.draw(oDC, 140, 140);
-    check(tParts["Switch Surface Normal"] and tParts["Switch Focus"], "Switch background and focus use named skin artwork.");
+    check(tParts["Switch Surface Normal"] and not tParts["Switch Focus"], "Switch background uses skin artwork without a focus outline.");
     for _, bEnabled in ipairs({true, false}) do
         oSwitch.setEnabled(bEnabled); oSwitch.draw(oDC, 140, 140);
         local oTextColor = oDC:GetTextForeground();

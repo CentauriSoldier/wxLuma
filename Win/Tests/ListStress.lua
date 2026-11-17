@@ -207,7 +207,7 @@ _Skin.destroy();
 collectgarbage("collect");
 print("PASS: matching selection, scroll, hover, callback identity/counts and rendered RGB pixels.");
 -- Verify integration using the real event loop and the object-backed dropdown.
-local _tWorkbench = require("Tests.UI")(_wx.NULL);
+local _tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
 local _oTimer     = _wx.wxTimer(_tWorkbench.Frame);
 
 _tWorkbench.Frame:Connect(_oTimer:GetId(), _wx.wxEVT_TIMER, function()

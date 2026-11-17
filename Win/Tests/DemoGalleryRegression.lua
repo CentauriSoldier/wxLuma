@@ -73,8 +73,51 @@ local function run()
             Play = function() _nPlayed = _nPlayed + 1; return true; end,
             delete = function() oSound:delete(); end};
     end});
-    _Demo = require("Tests.UI")(_wx.NULL);
+    _Demo = require("Tests.GalleryUI")(_wx.NULL);
     local oGallery, tWidgets = _Demo.Gallery, _Demo.Widgets;
+    local nButtonW = tWidgets.Button.Control:GetSizeWH();
+    check(nButtonW <= 200, "Gallery action examples use compact button widths.");
+    for _, sKey in ipairs({"Switch", "SwitchReverse", "SwitchVertical", "SwitchVerticalReverse"}) do
+        local nW, nH = tWidgets[sKey].Control:GetSizeWH();
+        check(math.max(nW, nH) <= 76 and math.min(nW, nH) <= 32, "Switch examples retain compact lever proportions.");
+    end
+    -- Exercise the actual native selector; provider changes must update the
+    -- existing gallery rather than rebuilding controls and losing sample data.
+    local oEditor, oIris = tWidgets.Text.TextControl, tWidgets.IrisProgress.Control;
+    local sText, nValue = tWidgets.Text.getValue(), tWidgets.IrisProgress.getValue();
+    --[[!
+    @fqxn wxLuma.Tests.DemoGalleryRegression.fPixels
+    @desc Renders cached-material controls to memory without visual inspection.
+    !]]
+    local function fPixels(oWidget)
+        local oBitmap = _wx.wxBitmap(240, 180);
+        local oDC = _wx.wxMemoryDC(); oDC:SelectObject(oBitmap);
+        oWidget.draw(oDC, 240, 180);
+        oDC:SelectObject(_wx.wxNullBitmap); oDC:delete();
+        local oImage = oBitmap:ConvertToImage();
+        local sPixels = oImage:GetData(); oImage:delete(); oBitmap:delete();
+        return sPixels;
+    end
+    local tOriginalPixels = {};
+    for _, sKey in ipairs({"LED", "Knob", "CircularProgress", "GlobeProgress", "RadialProgress", "LineChart"}) do
+        tOriginalPixels[sKey] = fPixels(tWidgets[sKey]);
+    end
+    for _, sSkin in ipairs({"Obsidian", "System", "Obsidian", "System"}) do
+        _Demo.SkinChoice:SetStringSelection(sSkin);
+        local oEvent = _wx.wxCommandEvent(_wx.wxEVT_COMMAND_CHOICE_SELECTED, _Demo.SkinChoice:GetId());
+        oEvent:SetEventObject(_Demo.SkinChoice);
+        _Demo.SkinChoice:GetEventHandler():ProcessEvent(oEvent); oEvent:delete();
+        check(_Demo.Skin.getName() == sSkin, "Native gallery selector changes the shared skin.");
+        check(tWidgets.Text.TextControl == oEditor and tWidgets.IrisProgress.Control == oIris,
+            "Skin switching retains native controls.");
+        check(tWidgets.Text.getValue() == sText and tWidgets.IrisProgress.getValue() == nValue,
+            "Skin switching retains gallery values.");
+        for sKey, sPixels in pairs(tOriginalPixels) do
+            local sCurrent = fPixels(tWidgets[sKey]);
+            check(sSkin == "System" and sCurrent == sPixels or sSkin == "Obsidian" and sCurrent ~= sPixels,
+                sKey.." rebuilds its cached materials for "..sSkin..".");
+        end
+    end
     check(#oGallery.Categories == 14 and #tWidgets.Tabs.Pages == 14, "All related categories have tab pages.");
     for sKey, sCategory in pairs({SearchField = "editors", ComboBox = "editors", NumericField = "editors",
         FilePicker = "dialogs", FolderPicker = "dialogs", MenuBar = "menus", Panel = "containers",
@@ -155,6 +198,23 @@ local function run()
     check(tWidgets.RadialMenu.showAtObject(tWidgets.RadialMenuTarget), "Radial menu opens from its own container.");
     tWidgets.RadialMenu.close();
     oGallery.show("MenuBar", true);
+    for _, sSkin in ipairs({"System", "Obsidian", "System"}) do
+        _Demo.SetSkin(sSkin);
+        for _, sId in ipairs({"file", "view", "help"}) do
+            local tHeading;
+            for _, tEntry in ipairs(tWidgets.MenuBar.getLayout().Entries) do
+                if (tEntry.Id == sId) then tHeading = tEntry; break; end
+            end
+            assert(tHeading, "Menu heading must be visible.");
+            local nX, nY = tHeading.X + math.floor(tHeading.Width / 2), tHeading.Y + math.floor(tHeading.Height / 2);
+            mouse(tWidgets.MenuBar.Control, _wx.wxEVT_LEFT_DOWN, nX, nY);
+            mouse(tWidgets.MenuBar.Control, _wx.wxEVT_LEFT_UP, nX, nY);
+            check(tWidgets.MenuBar.getMenu(sId).isOpen(), sSkin.." menu heading opens through native clicks: "..sId);
+            fPixels(tWidgets.MenuBar.getMenu(sId));
+            dispatch();
+            tWidgets.MenuBar.close();
+        end
+    end
     check(tWidgets.MenuBar.open("file"), "Menu bar opens in its command category.");
     tWidgets.MenuBar.getMenu("file").activateItem("folder");
     check(tWidgets.Tabs.getValue() == oGallery.getCategoryIndex("FolderPicker") and tWidgets.FolderPicker.isOpen(),

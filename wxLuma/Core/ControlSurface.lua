@@ -1,3 +1,5 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
+local _Border = require("wxLuma.Core.ControlBorder");
 local _Selection = require("wxLuma.Core.ControlSelection");
 local _Containment = require("wxLuma.Core.ControlContainment");
 local _ControlObject = require("wxLuma.Core.ControlObject");
@@ -14,14 +16,33 @@ local ControlSurface = {};
 @param table tOptions The factory options, including optional Containment
     (ancestor native window/visual component) and ContainmentOverflow (hide/allow).
     Nil settings inherit ancestor policy, then top-level/default policy.
+    Border defaults to wxBORDER_DEFAULT; native border constants provide overrides.
+    TransparentBackground requests native transparency or a native parent-background surface.
 @param string sKind The component kind.
 @ret table oComponent The public component object.
 !]]
 function ControlSurface.create(oParent, tOptions, sKind)
+    tOptions = _Theme.options(tOptions, oParent);
     assert(tOptions and tOptions.Skin, "Control options require a shared Skin.");
-    local oControl = _wx.wxControl(oParent, _wx.wxID_ANY, _wx.wxDefaultPosition, _wx.wxDefaultSize,
-        _wx.wxBORDER_NONE + _wx.wxWANTS_CHARS + _wx.wxTAB_TRAVERSAL);
-    oControl:SetBackgroundStyle(_wx.wxBG_STYLE_PAINT);
+    local bTransparent = tOptions.TransparentBackground == true;
+    local bNativeTransparent = bTransparent and oParent:IsTransparentBackgroundSupported();
+    local oControl;
+    local nStyle = _Border.style(tOptions, _wx.wxWANTS_CHARS + _wx.wxTAB_TRAVERSAL);
+    if (bTransparent and not bNativeTransparent) then
+        -- Native static text inherits themed parent brushes, unlike wxControl.
+        -- Its label stays empty; the component supplies all foreground drawing.
+        oControl = _wx.wxStaticText(oParent, _wx.wxID_ANY, "", _wx.wxDefaultPosition,
+            _wx.wxDefaultSize, nStyle + _wx.wxST_NO_AUTORESIZE);
+        oControl:SetBackgroundStyle(_wx.wxBG_STYLE_ERASE);
+        oControl:Connect(_wx.wxEVT_ERASE_BACKGROUND, function(oEvent)
+            oControl:SetBackgroundColour(_wx.wxNullColour);
+            oEvent:Skip();
+        end);
+    else
+        oControl = _wx.wxControl();
+        oControl:SetBackgroundStyle(bNativeTransparent and _wx.wxBG_STYLE_TRANSPARENT or _wx.wxBG_STYLE_PAINT);
+        oControl:Create(oParent, _wx.wxID_ANY, _wx.wxDefaultPosition, _wx.wxDefaultSize, nStyle);
+    end
     oControl:SetBackgroundColour(_wx.wxColour(24, 29, 36));
     oControl:SetName(tOptions.Text or sKind);
     local bLayoutApplied = false;
@@ -46,11 +67,11 @@ function ControlSurface.create(oParent, tOptions, sKind)
 
     --[[!
     @fqxn wxLuma.UI.ControlSurface.refresh
-    @desc Schedules an erase-free repaint unless the component is disposed.
+    @desc Schedules a repaint unless disposed; parent-background surfaces request native erasure.
     !]]
     function oComponent.refresh()
         if (not oComponent.Disposed) then
-            oControl:Refresh(false);
+            oControl:Refresh(bTransparent and not bNativeTransparent);
         end
     end
 
@@ -138,7 +159,7 @@ function ControlSurface.create(oParent, tOptions, sKind)
             oControl:SetSize(nX, nY, nWidth, nHeight);
         end
         if (oComponent.onLayout) then
-            oComponent.onLayout(nWidth, nHeight);
+            oComponent.onLayout(oControl:GetClientSizeWH());
         end;
 
         bLayoutApplied = true;
@@ -176,6 +197,7 @@ function ControlSurface.create(oParent, tOptions, sKind)
         local bOldHover, bOldPressed = oComponent.Hover, oComponent.Pressed;
         local nWidth, nHeight        = oControl:GetClientSizeWH();
         oComponent.Hover = sEvent ~= "leave" and nX >= 0 and nY >= 0 and nX < nWidth and nY < nHeight;
+        if (oComponent.Hover and oComponent.PointerHitTest) then oComponent.Hover = oComponent.PointerHitTest(nX, nY); end
         if (sEvent == "down" and oComponent.Hover) then
             oControl:SetFocus();
             oComponent.Pressed = true;
@@ -249,7 +271,8 @@ function ControlSurface.create(oParent, tOptions, sKind)
         end
     end);
     oControl:Connect(_wx.wxEVT_MOUSEWHEEL, function(jEvent)
-        if (oComponent.isEnabled() and oComponent.wheel) then
+        if (oComponent.isEnabled() and oComponent.wheel and
+            (not oComponent.PointerHitTest or oComponent.PointerHitTest(jEvent:GetX(), jEvent:GetY()))) then
             oComponent.wheel(jEvent:GetWheelRotation() / jEvent:GetWheelDelta());
         else
             jEvent:Skip();
@@ -284,7 +307,20 @@ function ControlSurface.create(oParent, tOptions, sKind)
         if (oComponent.Disposed) then
             return;
         end;
-        drawFrame(oDC, 0, 0, nWidth, nHeight, oComponent.isEnabled(), oControl:HasFocus());
+        if (_Theme.isTheme(oComponent.Skin) and oComponent.Skin.getName() == "System") then
+            -- The native non-client border surrounds this client area. Painting
+            -- a second frame here would replace or double the platform's choice.
+            local bList = sKind == "List" or sKind == "ListEx" or sKind == "TreeEx";
+            oComponent.Skin.fill(oDC, bList and "Editor" or "Background", 0, 0, nWidth, nHeight);
+        elseif (tOptions.Border == _wx.wxBORDER_NONE) then
+            -- Borderless meters must not regain a rectangular frame through
+            -- the legacy surface painter when an image skin is selected.
+            local oColor = _Theme.colour(oComponent.Skin, "Background", 24, 29, 36);
+            local oBrush = _wx.wxBrush(oColor); oColor:delete();
+            oDC:SetBackground(oBrush); oDC:Clear(); oBrush:delete();
+        else
+            drawFrame(oDC, 0, 0, nWidth, nHeight, oComponent.isEnabled(), oControl:HasFocus(), oComponent.Skin);
+        end
         if (oComponent.drawContent) then
             oComponent.drawContent(oDC, nWidth, nHeight);
         end
@@ -297,7 +333,12 @@ function ControlSurface.create(oParent, tOptions, sKind)
             local oBox = oControl:GetUpdateRegion():GetBox();
             oComponent.PaintTop, oComponent.PaintBottom = oBox:GetY(), oBox:GetY() + oBox:GetHeight();
         end
-        local oDC = _wx.wxAutoBufferedPaintDC(oControl);
+        local oDC;
+        if (bTransparent) then
+            oDC = _wx.wxPaintDC(oControl);
+        else
+            oDC = _wx.wxAutoBufferedPaintDC(oControl);
+        end
         oComponent.draw(oDC, oControl:GetClientSizeWH());
         oComponent.PaintTop, oComponent.PaintBottom = nil, nil;
         oDC:delete();
@@ -312,6 +353,7 @@ function ControlSurface.create(oParent, tOptions, sKind)
     oControl:Enable(tOptions.Enabled ~= false);
     _Containment.attach(oComponent, oControl, tOptions);
     _Events.attach(oComponent);
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

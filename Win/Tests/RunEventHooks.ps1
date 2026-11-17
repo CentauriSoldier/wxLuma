@@ -1,4 +1,4 @@
-# Run event, inspector, gallery, state and additional-control regressions using the packaged runtime.
+# Run control, gallery, skin-layout and external-skin regressions using the packaged runtime.
 # Syntax loading does not execute other test scripts or write result files.
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent).Replace('\', '/')
@@ -6,6 +6,7 @@ $taskRoot = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent).Replace('\',
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class WxLumaEventHookHost {
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)]
     static extern bool SetDllDirectory(string path);
@@ -37,7 +38,10 @@ public static class WxLumaEventHookHost {
             if (result == 0) result = lua_pcallk(state, 0, 0, 0, IntPtr.Zero, IntPtr.Zero);
             if (result != 0) {
                 UIntPtr length;
-                Console.Error.WriteLine(Marshal.PtrToStringUTF8(lua_tolstring(state, -1, out length)));
+                IntPtr message = lua_tolstring(state, -1, out length);
+                byte[] bytes = new byte[checked((int)length.ToUInt64())];
+                if (message != IntPtr.Zero) Marshal.Copy(message, bytes, 0, bytes.Length);
+                Console.Error.WriteLine(message == IntPtr.Zero ? "Unknown Lua error." : Encoding.UTF8.GetString(bytes));
             }
             return result;
         }
@@ -56,6 +60,11 @@ $taskChecks = foreach ($taskFile in $taskFiles) {
 }
 $taskCode = ($taskChecks -join "`n") + "`nAPP_PATH=[==[$taskRoot/Win]==]; assert(loadfile(APP_PATH..'/Tests/EventHooksRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/InspectorRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/DemoGalleryRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/StateRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/AdditionalControlsRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/SwitchLEDRegression.lua'))();"
 $taskCode += " assert(loadfile(APP_PATH..'/Tests/LogChartRegression.lua'))();"
+$taskCode += " require('Win.Tests.SkinLayoutRegression').run(); require('Win.Tests.ThemeProofRegression').run();"
+$taskCode += " require('Win.Tests.SystemRenderingRegression').run();"
+$taskCode += " require('Win.Tests.BorderRegression').run();"
+$taskCode += " require('Win.Tests.TaskDeskRegression').run();"
+$taskCode += " arg={[1]=APP_PATH}; assert(loadfile(APP_PATH..'/Tests/ProgressSkinRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/OrbProgressRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/DisplayContainersRegression.lua'))();"
 $taskResult = [WxLumaEventHookHost]::Run($taskRoot, $taskCode)
 if ($taskResult -ne 0) { throw "wxLuma regression failed: $taskResult" }
 Write-Output "Syntax loading passed for $($taskFiles.Count) Lua files."

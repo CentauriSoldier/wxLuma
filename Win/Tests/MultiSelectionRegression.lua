@@ -258,7 +258,7 @@ local function run()
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxYield();
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
 
     for _, tPair in ipairs({{"List", "ListMultiSelect", 2}, {"Table", "TableMultiSelect", 6}, {"ListEx", "ListExMultiSelect", 6}}) do
         tWorkbench.Gallery.show(tPair[2], true);

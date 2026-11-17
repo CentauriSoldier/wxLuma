@@ -7,7 +7,7 @@
 local tCatalog = {
     {Id = "choices", Title = "Buttons & choices", Cards = {
         {Id = "Switch", Title = "Switches and levers", Primary = {"Switch", "SwitchReverse", "SwitchVertical", "SwitchVerticalReverse"},
-            Mode = "columns", Height = 132, Actions = {"SwitchOrientation", "SwitchDirection"},
+            Mode = "switches", Height = 88, Actions = {"SwitchOrientation", "SwitchDirection"},
             Description = "Binary switches compare horizontal/vertical and standard/reversed directions. Lever artwork, background, optional caption colors and focus are skinnable.",
             Usage = "Click or press Enter/Space. Arrows select physical endpoints. Standard on is right/up. Actions change orientation and reversal at runtime; skins follow automatically.",
             API = "Controls.switch(parent, {Skin = skin, Orientation = 'vertical', Reversed = false, Value = true})"},
@@ -96,11 +96,11 @@ local tCatalog = {
             Description = "Colored indicators compare a bare green lens, a red glass-covered lens and an off blue lens. Glow, lens, bezel and cover are skinnable images.",
             Usage = "Toggle power, glow and glass on the first LED. Adjust brightness, diameter, color and glow radius in pixels. Automatic glow restores proportional sizing; radius zero hides the halo. Clicking reports events/audio without changing its state.",
             API = "Controls.led(parent, {Skin = skin, Value = true, Color = {R = 80, G = 220, B = 140}, Glow = true, Glass = false})"},
-        {Id = "Label", Title = "Labels", Primary = {"Label", "WrappedLabel", "AlignedLabel"}, Height = 330,
+        {Id = "Label", Title = "Labels", Primary = {"Label", "WrappedLabel", "AlignedLabel"}, Height = 180,
             Description = "Plain, wrapped and aligned labels demonstrate one text-display type together.",
             Usage = "Resize to compare wrapping and alignment. Hover/click/focus a label to see its interaction event in the status line.",
             API = "Controls.label(parent, {Skin = skin, Value = text, Wrap = true, Align = 'center'})"},
-        {Id = "Image", Title = "Image", Primary = {"Image"}, Actions = {"ImageMode"}, Height = 230,
+        {Id = "Image", Title = "Image", Primary = {"Image"}, Actions = {"ImageMode"}, Height = 168,
             Description = "An image surface supports contain, cover, stretch and native-size display.",
             Usage = "Cycle scaling modes and resize the workbench. Pointer events are reported in the status line.",
             API = "Controls.image(parent, {Skin = skin, Value = path, ScaleMode = 'contain'})"},
@@ -160,7 +160,7 @@ local tCatalog = {
             API = "Controls.table(parent, {Skin = skin, Columns = columns, Items = records})"},
     }},
     {Id = "orbs", Title = "Orb meters", Cards = {
-        {Id = "OrbMeters", Title = "Orb meters", Primary = {"GlobeProgress", "RadialProgress", "IrisProgress"}, Height = 230, Mode = "orbs",
+        {Id = "OrbMeters", Title = "Orb meters", Primary = {"GlobeProgress", "RadialProgress", "IrisProgress"}, Height = 168, Mode = "orbs",
             Actions = {"OrbValue", "OrbReserved", "GlobeOrigin", "GlobeSkin", "GlobeReserveOrigin", "RadialDirection", "RadialSkin", "RadialReserveDirection", "IrisDirection", "IrisBlades", "IrisPicture"},
             Description = "Globe, radial and iris variants share one meter section for direct visual comparison.",
             Usage = "Left: globe liquid level. Middle: radial fill. Right: iris aperture. Value stops at 100 minus reserve. Raising reserve trims current; lowering it leaves current unchanged. Other actions adjust the named variant's policy.",

@@ -8,7 +8,7 @@ package.path  = APP_PATH .. "/../?.lua;" .. APP_PATH .. "/../?/init.lua;" .. APP
 package.cpath = APP_PATH.."/Bin/?.dll";
 
 local _wx       = require("wx");
-local _pFramework = require("wxLuma")().Config.ImagePath;
+local _pFramework = require("wxLuma")().Config.SkinPath;
 local _Controls = require("wxLuma.Controls");
 local _nChecks  = 0;
 _wx.wxGetApp():SetExitOnFrameDelete(false);
@@ -274,7 +274,8 @@ local function run()
     _wx.wxYield();
     check(nPaints == 0, "Unchanged bindings schedule no native paints.");
     local nViewWidth, nViewHeight = oScroll.getViewportSize();
-    check(nViewWidth == 570 and nViewHeight == 420, "Both scrollbars reserve viewport space.");
+    local nClientWidth, nClientHeight = oScroll.Control:GetClientSizeWH();
+    check(nViewWidth == nClientWidth - 30 and nViewHeight == nClientHeight - 30, "Both scrollbars reserve native client space.");
     check(oScroll.HorizontalScrollbar.Control:IsShown() and oScroll.VerticalScrollbar.Control:IsShown(),
         "Both axes visible for large content.");
     local nScrolled = 0;
@@ -305,8 +306,8 @@ local function run()
     check(oScroll.getValue().X == 0 and oScroll.getValue().Y == 0, "Shrink clamps offsets.");
     check(not oScroll.HorizontalScrollbar.Control:IsShown() and not oScroll.VerticalScrollbar.Control:IsShown(),
         "Bars disappear for small content.");
-    check(oScroll.getViewportSize() == 592, "Hidden bars restore viewport width.");
-    oScroll.setContentSize(590, 450);
+    check(oScroll.getViewportSize() == nClientWidth - 8, "Hidden bars restore native client width.");
+    oScroll.setContentSize(nClientWidth - 10, nClientHeight + 10);
     check(oScroll.HorizontalScrollbar.Control:IsShown() and oScroll.VerticalScrollbar.Control:IsShown(),
         "Vertical bar can force horizontal overflow.");
     oScroll.setContentSize(1200, 1000);
@@ -336,12 +337,14 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     _wx.wxYield();
-    check(#tWorkbench.Widgets.Tabs.Pages == 12 and tWorkbench.Widgets.Tabs.Items[7] == "Orb meters"
-        and tWorkbench.Widgets.Tabs.Items[8] == "Menus",
-        "Workbench retains its existing categories and includes Orb meters and Menus.");
-    tWorkbench.Widgets.Tabs.setValue(4);
+    local oGallery = tWorkbench.Gallery;
+    local nContainers = oGallery.getCategoryIndex("ScrollContainer");
+    check(#tWorkbench.Widgets.Tabs.Pages == #oGallery.Categories
+        and oGallery.getCategoryIndex("GlobeProgress") ~= nil and oGallery.getCategoryIndex("ContextMenu") ~= nil,
+        "Workbench categories include orb meters and menus.");
+    oGallery.show("Image", true);
     tWorkbench.Layout();
     _wx.wxYield();
     check(tWorkbench.Widgets.Image.Control:IsShownOnScreen(), "Display sample is visible.");
@@ -351,7 +354,7 @@ local function run()
     local oWorkbenchTabs = tWorkbench.Widgets.Tabs;
     local tContainerHeader;
     for _, tEntry in ipairs(oWorkbenchTabs.getLayout().Entries) do
-        if (tEntry.Index == 5) then
+        if (tEntry.Index == nContainers) then
             tContainerHeader = tEntry;
         end
     end
@@ -361,7 +364,9 @@ local function run()
     fMouse(oWorkbenchTabs.Control, _wx.wxEVT_LEFT_DOWN, nTabX, nTabY);
     fMouse(oWorkbenchTabs.Control, _wx.wxEVT_LEFT_UP, nTabX, nTabY);
     _wx.wxYield();
-    check(oWorkbenchScroll.Control:HasFocus(), "Selecting Containers focuses its scroll surface.");
+    check(oGallery.Categories[nContainers].Scroll.Control:HasFocus(), "Selecting Containers focuses its category scroll surface.");
+    oGallery.show("ScrollContainer", true);
+    oWorkbenchScroll.Control:SetFocus();
 
     local function fNativeKey(oTarget, nKey)
         local jEvent = _wx.wxKeyEvent(_wx.wxEVT_KEY_DOWN);
@@ -421,7 +426,7 @@ local function run()
     fNativeKey(tWorkbench.Widgets.ScrollButton.Control, _wx.WXK_HOME);
     check(oWorkbenchScroll.getValue().Y == 100,
         "Interactive child keeps its own keyboard ownership.");
-    tWorkbench.Widgets.Tabs.setValue(5);
+    oGallery.show("ScrollContainer", true);
     _wx.wxYield();
     check(tWorkbench.Widgets.ScrollContainer.Control:IsShownOnScreen(), "Container sample is visible.");
     tWorkbench.Widgets.ScrollContainer.handleKey("down", _wx.WXK_END);

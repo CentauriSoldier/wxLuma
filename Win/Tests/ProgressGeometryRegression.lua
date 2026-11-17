@@ -232,7 +232,7 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
 
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Gallery.show("ProgressOrigin", true);
     tWorkbench.Layout();
     _wx.wxYield();

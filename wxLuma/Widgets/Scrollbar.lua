@@ -1,3 +1,4 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx           = require("wx");
 local Scrollbar     = {};
 local createSurface = require("wxLuma.Core.ControlSurface").create;
@@ -12,6 +13,7 @@ local finite        = require("wxLuma.Core.ControlNumeric").finite;
 @ret table oComponent Standard component plus setRange(Min,Max,Page) and getThumb.
 !]]
 function Scrollbar.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
     local oComponent = createSurface(oParent, tOptions, "Scrollbar");
     oComponent.PointerRefresh      = true;
     oComponent.PointerStateRefresh = true;
@@ -97,13 +99,16 @@ function Scrollbar.create(oParent, tOptions)
         return 18 + (oComponent.Max == oComponent.Min and 0
             or math.floor(nTravel * (oComponent.Value - oComponent.Min) / (oComponent.Max - oComponent.Min))), nThumb, nTravel;
     end
-    local nDrag;
+    local nDrag, nHoverPart, nPressedPart, nPointerAt;
 
     -- Apply widget policy after shared pointer-state handling.
     oComponent.pointer = function(sEvent, nX, nY)
         local nAt                     = oComponent.Vertical and nY or nX;
         local nWidth, nHeight         = oComponent.Control:GetClientSizeWH();
         local nLength                 = oComponent.Vertical and nHeight or nWidth;
+        nPointerAt = nAt;
+        nHoverPart = oComponent.Hover and (nAt < 18 and 1 or nAt >= nLength - 18 and 2 or 0) or 0;
+        if (sEvent == "down") then nPressedPart = nHoverPart; end
         local nStart, nThumb, nTravel = oComponent.getThumb();
         if (sEvent == "down" and oComponent.Hover) then
             nDrag = nil;
@@ -121,7 +126,7 @@ function Scrollbar.create(oParent, tOptions)
             oComponent.setValue(oComponent.Min + (nAt - 18 - nDrag) / nTravel * (oComponent.Max - oComponent.Min), true);
         end
         if (sEvent == "up" or sEvent == "cancel" or not oComponent.Pressed) then
-            nDrag = nil;
+            nDrag, nPressedPart = nil, nil;
         end
     end;
 
@@ -152,24 +157,56 @@ function Scrollbar.create(oParent, tOptions)
         oComponent.setValue(oComponent.Value - nSteps * oComponent.Step * 3, true);
     end;
 
+    --[[!
+    @fqxn wxLuma.UI.Scrollbar.drawNativeContent
+    @desc Shares native arrow-button and thumb rendering with lists/dropdowns.
+        Only the hovered/pressed end changes state; range limits disable the
+        corresponding arrow. Image skins return false and retain their artwork.
+    !]]
+    function oComponent.drawNativeContent(oDC, nWidth, nHeight)
+        if (not _Theme.isTheme(oComponent.Skin) or oComponent.Skin.getName() ~= "System") then return false; end
+        oComponent.Skin.fill(oDC, "Background", 0, 0, nWidth, nHeight);
+        local nAt, nThumb = oComponent.getThumb();
+        for nPart = 1, 2 do
+            local sState = (not oComponent.isEnabled() or oComponent.Min == oComponent.Max
+                or nPart == 1 and oComponent.Value <= oComponent.Min or nPart == 2 and oComponent.Value >= oComponent.Max) and "Disabled"
+                or oComponent.Pressed and nPressedPart == nPart and nHoverPart == nPart and "Pressed"
+                or nHoverPart == nPart and "Hover" or "Normal";
+            oComponent.Skin.arrowButton(oComponent, oDC,
+                oComponent.Vertical and (nPart == 1 and "Up" or "Down") or (nPart == 1 and "Left" or "Right"),
+                oComponent.Vertical and 0 or (nPart == 1 and 0 or nWidth - 18),
+                oComponent.Vertical and (nPart == 1 and 0 or nHeight - 18) or 0,
+                oComponent.Vertical and nWidth or 18, oComponent.Vertical and 18 or nHeight, sState);
+        end
+        local nFlags = not oComponent.isEnabled() and _wx.wxCONTROL_DISABLED
+            or nDrag and oComponent.Pressed and _wx.wxCONTROL_PRESSED
+            or oComponent.Hover and nPointerAt and nPointerAt >= nAt and nPointerAt < nAt + nThumb and _wx.wxCONTROL_CURRENT or 0;
+        local oRect = oComponent.Vertical and _wx.wxRect(2, nAt, math.max(1, nWidth - 4), nThumb)
+            or _wx.wxRect(nAt, 2, nThumb, math.max(1, nHeight - 4));
+        _wx.wxRendererNative.Get():DrawPushButton(oComponent.Control, oDC, oRect, nFlags); oRect:delete();
+        return true;
+    end
+
     -- Draw widget content inside the shared frame; shared code owns the paint DC.
     oComponent.drawContent = function(oDC, nWidth, nHeight)
+        if (oComponent.drawNativeContent(oDC, nWidth, nHeight)) then return; end
         local nAt, nThumb = oComponent.getThumb();
         local sState      = oComponent.getState();
         if (oComponent.Vertical) then
             oComponent.Skin.drawOpaque(oDC, "Spinner Up " .. sState, 0, 0, nWidth, 18);
             oComponent.Skin.drawOpaque(oDC, "Spinner Down " .. sState, 0, nHeight - 18, nWidth, 18);
-            drawFrame(oDC, 2, nAt, nWidth - 4, nThumb, oComponent.isEnabled(), oComponent.Hover);
+            drawFrame(oDC, 2, nAt, nWidth - 4, nThumb, oComponent.isEnabled(), oComponent.Hover, oComponent.Skin);
             oComponent.Skin.text(oDC, "=", math.max(2, (nWidth - 10) / 2), nAt + (nThumb - 18) / 2,
                 oComponent.isEnabled());
         else
-            drawFrame(oDC, nAt, 2, nThumb, nHeight - 4, oComponent.isEnabled(), oComponent.Hover);
-            oComponent.Skin.text(oDC, "<", 3, 2, oComponent.isEnabled());
-            oComponent.Skin.text(oDC, ">", nWidth - 15, 2, oComponent.isEnabled());
+            drawFrame(oDC, nAt, 2, nThumb, nHeight - 4, oComponent.isEnabled(), oComponent.Hover, oComponent.Skin);
+            oComponent.Skin.drawOpaque(oDC, "Spinner Down "..sState, 0, 0, 18, nHeight, true);
+            oComponent.Skin.drawOpaque(oDC, "Spinner Up "..sState, nWidth - 18, 0, 18, nHeight, true);
         end
     end;
     oComponent.setRange(tOptions.Min, tOptions.Max, tOptions.Page);
     oComponent.setValue(tOptions.Value);
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

@@ -7,10 +7,11 @@ APP_PATH = assert(arg[1], "Pass the export root.");
 package.path = APP_PATH .. "/../?.lua;" .. APP_PATH .. "/../?/init.lua;" .. APP_PATH.."/?.lua;"..APP_PATH.."/?/init.lua";
 package.cpath = APP_PATH.."/Bin/?.dll";
 local _wx       = require("wx");
-local _pFramework = require("wxLuma")().Config.ImagePath;
+local _pFramework = require("wxLuma")().Config.SkinPath;
 local _Controls = require("wxLuma.Controls");
 local _nChecks  = 0;
 local _tFixtures = {};
+local _tFixtureDirectories = {};
 _wx.wxGetApp():SetExitOnFrameDelete(false);
 
 --[[!
@@ -77,7 +78,7 @@ local function run()
     for _, sKind in ipairs({"Circular Progress", "Progress"}) do
         for _, sPart in ipairs({"Track", "Fill"}) do
             for _, sState in ipairs({"Normal", "Disabled"}) do
-                local oImage = _wx.wxImage(_pFramework.."/Controls/Control "..sKind.." "..sPart.." "..sState..".png", _wx.wxBITMAP_TYPE_PNG);
+                local oImage = _wx.wxImage(_pFramework.."/"..sKind:gsub(" ", "").."/Control "..sKind.." "..sPart.." "..sState..".png", _wx.wxBITMAP_TYPE_PNG);
                 check(oImage:IsOk() and oImage:GetWidth() == 256, "Built-in progress material exists.");
                 oImage:delete();
             end
@@ -88,6 +89,12 @@ local function run()
     -- hard-coded colour mode, reaches both the circular and linear renderers.
     local pTemp = assert(os.getenv("TEMP")):gsub("\\", "/").."/";
     local sArtwork = "wxLuma Progress Fixture "..os.time().." "..math.random(1000000);
+    pTemp = pTemp..sArtwork.."/";
+    assert(not _wx.wxDirExists(pTemp) and _wx.wxMkdir(pTemp), "Cannot create isolated fixture root.");
+    _tFixtureDirectories[#_tFixtureDirectories + 1] = pTemp;
+    local pFolder = pTemp.."wxLuma";
+    assert(_wx.wxMkdir(pFolder), "Cannot create fixture object directory.");
+    _tFixtureDirectories[#_tFixtureDirectories + 1] = pFolder;
     local tMaterials = {
         {"Track Normal", {120, 40, 170}},
         {"Fill Normal", {30, 210, 80}},
@@ -96,7 +103,7 @@ local function run()
     };
 
     for _, tMaterial in ipairs(tMaterials) do
-        local pFile = pTemp.."Control "..sArtwork.." "..tMaterial[1]..".png";
+        local pFile = pFolder.."/Control "..sArtwork.." "..tMaterial[1]..".png";
         check(io.open(pFile, "rb") == nil, "Fixture does not overwrite a file.");
         local oImage = _wx.wxImage(16, 16);
         oImage:SetRGB(_wx.wxRect(0, 0, 16, 16), table.unpack(tMaterial[2]));
@@ -247,7 +254,7 @@ local function run()
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxYield();
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Widgets.Tabs.setValue(3);
     tWorkbench.Layout();
     _wx.wxYield();
@@ -270,6 +277,8 @@ local bPassed, sError = xpcall(run, debug.traceback);
 for _, pFile in ipairs(_tFixtures) do
     os.remove(pFile);
 end
+-- Remove only the empty object directory created by this fixture.
+for nIndex = #_tFixtureDirectories, 1, -1 do _wx.wxRmdir(_tFixtureDirectories[nIndex]); end
 
 if (not bPassed) then
     io.stderr:write(sError.."\n");

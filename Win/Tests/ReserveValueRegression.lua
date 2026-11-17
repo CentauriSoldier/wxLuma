@@ -91,7 +91,7 @@ local function run()
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxGetApp():Yield();
-    local tDemo = require("Tests.UI")(_wx.NULL);
+    local tDemo = require("Tests.GalleryUI")(_wx.NULL);
     local tWidgets = tDemo.Widgets;
     tDemo.Gallery.show("OrbValue", true);
     tWidgets.OrbValue.setValue(100, true);

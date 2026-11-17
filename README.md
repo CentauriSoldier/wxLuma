@@ -161,11 +161,135 @@ return {
 
 The loader validates that the file returns a table with a nonempty string `ImagePath`. File, syntax, and configuration errors are reported to the caller. Custom configuration files execute as Lua code and should come from the application.
 
-Relative image paths resolve against the framework folder, including paths supplied by a custom configuration. The default therefore selects `wxLuma/Images/`, containing `Controls/`, `Window/`, and `Menu/`. Absolute paths can select an external image package. The loaded `wxLuma.Config.ImagePath` is resolved to a full directory path.
+Relative image paths resolve against the framework folder, including paths supplied by a custom configuration. The default therefore selects `wxLuma/Images/` for application images, including the sample `Menu/` icons. Absolute paths can select an external image package. The loaded `wxLuma.Config.ImagePath` is resolved to a full directory path.
 
-Control skins default to `<ImagePath>/Controls/`; decorated windows default to `<ImagePath>/Window/`. Window ornament source PNGs are 256 by 256 pixels and display within 32-pixel corner bounds. The demo and tests use the same configured image package for their sample images. Explicit `Controls.loadSkin(pathWithTrailingSlash)` and window `AssetPath` options still override the defaults.
+Skin artwork lives under `SkinPath`, defaulting to `wxLuma/Skins/Obsidian/`. Each object owns a named subfolder, such as `PushButton/`, `IrisProgress/`, or `Window/`. Flat skin directories are unsupported. Window ornament source PNGs are 256 by 256 pixels and display within 32-pixel corner bounds. The demo and tests use the same configured image package for their sample images. Explicit `Controls.loadSkin(pathWithTrailingSlash)` and window `AssetPath` options still override the defaults.
 
 Load the framework through normal file-based Lua modules; configuration resolves its location from the Lua source filename using wxFileName. The caller remains responsible for making wxLua and the framework discoverable.
+
+## Task desk sample application
+
+Controls use `wxBORDER_DEFAULT` unless an explicit `Border` option is supplied:
+
+```lua
+local oList = Controls.listEx(oParent, {
+    Border = wx.wxBORDER_SUNKEN,
+    Columns = {{Key = "Name", Title = "Name"}},
+    Items = {{Name = "Release notes"}},
+});
+```
+
+`Border` accepts wxWidgets' `wxBORDER_DEFAULT`, `wxBORDER_NONE`,
+`wxBORDER_SIMPLE`, `wxBORDER_SUNKEN`, `wxBORDER_RAISED`, `wxBORDER_STATIC`, or
+`wxBORDER_THEME`. The platform/control determines the default appearance and
+which styles it supports. System client painting does not replace the native
+border. Composite editors, trees and tables apply the option to their native
+child, exposed as `BorderControl`, rather than adding a second outer frame.
+Floating inspectors retain OS window chrome. Border flags remain unchanged when
+switching skins. These are creation options; there is no promise of portable
+runtime border changes.
+Switches, plain labels, progress bars, circular/globe/radial/iris meters, knobs,
+LEDs, sliders and range sliders default to no outer frame, matching their visual role;
+explicit `Border` overrides still take precedence. System property sheets use
+editor surfaces, category headers use the window background, and separators use
+the border role. Collapsible sections similarly separate header and body roles;
+nested labels inherit the actual body background. These behaviors are implemented
+in the framework objects and shared renderer, independently of the demo app.
+Knobs keep a stable background during hover/drag and add no focus rectangle.
+Custom controls never paint focus outlines. The legacy `FocusBorder` option is
+accepted for compatibility but adds no decoration; native `Border` remains independent.
+Radio buttons and checkboxes default to no rectangular native border; an explicit
+`Border` overrides that default. Range sliders share the normal slider's track
+and thumb artwork, dimensions and state styling, with two handles for an interval.
+Progress bars, circular/radial meters, globes and irises outline their actual
+track or outer disc by default. `Outline = false` hides this shape edge;
+`OutlineColour = {R = 100, G = 110, B = 120}` and `OutlineWidth = 2` customize it
+(width 1–8 pixels). The default uses the OS border color in System mode.
+Circular outlines are antialiased with the meter artwork and never form an
+outer rectangular frame or change on focus.
+Push, toggle and image buttons default to no outer border and add no focus
+outline. System push/toggle buttons use flat fills for hover, press and selected
+feedback. An explicit `Border` setting remains available; image skins retain
+their authored button artwork.
+Pointer hit testing follows the circular dial, excluding corners and the value
+caption; wheel input and click/hover subscriptions follow the same boundary.
+Drags started on the dial retain capture until release, and keyboard control
+remains available.
+
+System dropdowns, editable combo boxes and property-grid choices draw their
+dropdown button through wxWidgets' native renderer, including hover, pressed,
+disabled and popup-open states. Image skins provide their own arrow artwork.
+Plain dropdowns use `Dropdown Arrow Normal/Hover/Pressed/Disabled` assets inside
+`Skins/<SkinName>/Dropdown/`; no text character is used as an arrow fallback.
+The same native arrow renderer serves spinner/numeric step buttons, vertical and
+horizontal scroll buttons, list and dropdown scrollbars, submenu indicators and
+breadcrumb arrows. This wxLua build exposes a native downward arrow; the framework
+rotates its rendered glyph for other directions and combines it with native
+button feedback. Disabled/read-only controls and exhausted scroll/step directions
+use disabled rendering. Skin-backed lists use `Scroll Up` and `Scroll Down`
+artwork in their own object folders, and context menus use `Menu Arrow Right`.
+Tab captions center by default, including their optional icon. `TextAlign = "left"`
+or `"right"` overrides this. Tabs add no active underline or focus outline.
+Tab overflow buttons use native arrows in
+System mode and `Tabs Navigation Up/Down/Left/Right` artwork in image skins.
+
+`Win/test.exe` now opens Task desk: a working project workspace rather than the
+exhaustive gallery. Its five pages organize controls around real workflows:
+
+- Work: searchable task queue, editing, autosave, completion and recent activity.
+- Planning: ownership, schedule, budget, project folders, deliverables and approval checks.
+- Resources: build commands, shared capacity controls, resource meters and release review.
+- Reports: charts derived from the current tasks and their completion state.
+- Settings: source/output paths, delivery policy, project properties and a dockable inspector.
+
+The application creates all 59 exported control factories, including chart and
+picker variants, alongside native menus, labels and choices. The Project menu
+also opens a reusable review dialog and a separate project overview window.
+Appearance switches between System and Obsidian without resetting the workspace.
+Sample changes stay in memory. The System switch blends into its actual parent
+and draws its focus cue around the lever rather than around the control rectangle.
+
+`TaskDeskRegression.lua` checks factory coverage against `wxLuma.Controls`,
+connected workflows, both skins and resizing. It keeps the app hidden. The old
+gallery is retained in `Win/Tests/GalleryUI.lua` for existing regression fixtures;
+`Win/Tests/UI.lua` is the normal Task desk entry point.
+
+## System / Obsidian rendering proof
+
+Control factories accept omitted Skin/Theme options and use the shared context,
+configured by `Skin = "System"` in `wxLuma/wxLumaConfig.lua`. The control gallery
+has a **Skin** selector above its tabs. Choose **System** or **Obsidian** to switch
+the existing samples without recreating controls or resetting their values.
+Each gallery owns an independent context. The smaller comparison below remains
+available for focused button, textfield and iris checks.
+
+Run the interactive comparison from the repository root:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Win\Tests\RunThemeProof.ps1
+```
+
+Add `-Check` for automated behavior and memory-rendering checks instead. The launcher
+uses the packaged Lua/wxLua DLLs; no separately installed Lua interpreter is needed.
+The user performs visual inspection of the interactive comparison.
+
+The left column creates the production controls without Skin or Theme arguments.
+The selector switches those same objects between System and Obsidian; the right
+column remains an Obsidian reference. The native slider changes both irises, and
+disabled examples and ordinary native wxWidgets controls provide comparisons.
+
+System uses the native button renderer, the system GUI font and semantic system
+colors. Iris geometry remains custom; reserved capacity also uses hatching.
+Obsidian contains the existing artwork under `Skins/Obsidian/<ObjectName>/`. Every skin uses this same per-object folder layout.
+An explicit legacy `Skin` retains its previous rendering and ownership contract.
+
+`wxLuma.Theme.setName("Obsidian")` changes the instance's shared context;
+`setName("System")` returns to system rendering and refreshes cached system resources.
+Existing text, editor selection, values, callbacks and native identities survive
+switching. Destroy the themed controls before `wxLuma.Theme.destroy()`.
+Separate loader calls have independent appearance contexts. Explicit application
+fill colors remain supported. This proof does not enable Windows dark-mode support
+or restyle arbitrary native wxWidgets controls.
 
 ## Repository layout
 
@@ -316,15 +440,32 @@ the same row does not repeat these transitions. Tabs, Toolbar and menus retain
 their existing item hover/leave and activation events.
 
 `Win/Tests/RunEventHooks.ps1` syntax-checks the Lua files and runs native
-event, inspector, gallery and object-state regressions using the bundled Windows runtime. Event coverage includes every factory,
+event, inspector, gallery, object-state, skin-layout, theme-switching and external
+progress/orb skin regressions using the bundled Windows runtime. Gallery checks
+exercise the native skin selector, retained values/identities and cached-material
+rendering in both providers. System rendering checks additionally verify opaque
+backgrounds, whole-word glyph matching, native checkbox output, compact slider
+geometry and paired OS colors for row and substring selections. Checkboxes use
+the native renderer; sliders use DPI-scaled system colors and geometry because
+this wxLua build does not expose a native slider renderer.
+Run from the repository root with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Win\Tests\RunEventHooks.ps1
+```
+
+Event coverage includes every factory,
 native editors, exact-once delivery, listener removal, row/node hover transitions,
 button activation and disposal. It does not play audio or write preview files.
 
-New visual controls must accept the shared `Skin` object. When a control needs artwork that does not yet exist, add named PNG assets under `Images/Controls` and exercise them in the workbench. Colour options remain available where useful.
+New visual controls must accept the shared `Skin` object. When a control needs artwork that does not yet exist, add named PNG assets under `Skins/<SkinName>/<ObjectName>/` and exercise them in the workbench. Colour options remain available where useful.
 
 Progress and CircularProgress accept `Appearance = "skin"` or `"colour"`. Both expose `getAppearance()` and `setAppearance(mode, notify)` for runtime switching. Progress retains its original colour-gradient default. CircularProgress defaults to skin unless an explicit `Colour` is supplied. Switching appearance preserves value, range, size and direction.
 
-The shared skin loader accepts an artwork root: `Controls.loadSkin(pathWithTrailingSlash)`. Each PNG is named `Control <artwork name>.png`. The optional `Artwork` prefix selects alternate progress materials within that root.
+The shared skin loader accepts a skin root: `Controls.loadSkin(path)`. Each PNG
+must be inside its object's subfolder and named `Control <artwork name>.png`.
+The optional `Artwork` prefix selects alternate material families; custom families
+use their first word as the object folder. Flat roots are unsupported.
 
 | Control | Default material names |
 | --- | --- |
@@ -1235,7 +1376,7 @@ Events: `opened`, `closed` (Committed flag), `previewChanged` (Value), `committe
 
 ### Skin materials
 
-All new decoration comes from `Images/Controls/Control <prefix> <part>.png`.
+All new decoration comes from `Skins/<SkinName>/<ObjectName>/Control <prefix> <part>.png`.
 The default prefixes and required parts are:
 
 | Prefix | Parts |
@@ -1447,7 +1588,7 @@ own event ownership and native parent lifetime.
 
 ### Inspector artwork and verification
 
-All files live under `wxLuma/Images/Controls/` with names
+All files live under `wxLuma/Skins/<SkinName>/<ObjectName>/` with names
 `Control <prefix> <part>.png`. Replace the files in a custom skin or select an
 alternate `Artwork` prefix with the same parts. State lists below mean
 Normal/Hover/Pressed/Disabled unless stated otherwise.
@@ -1685,12 +1826,15 @@ oLog.copySelected();
 ```
 
 Entry records contain required `Text`, optional stable string `Id`, image-path
-`Icon`, string `Timestamp`, and optional `Severity` (`trace`, `debug`, `info`,
+`Icon` or semantic skin-part `IconArtwork`, string `Timestamp`, and optional `Severity` (`trace`, `debug`, `info`,
 `success`, `warning`, `error`). Omitted IDs are generated independently per log.
 Severity is disabled by default and is never required for plain/game entries.
 When enabled, it selects named skin colors and optional severity labels.
 Timestamps are application-supplied strings; the control does not invent them.
 Invalid batches, duplicate IDs and unreadable icons fail before replacing entries.
+Use `IconArtwork = "Icon Normal"` for the built-in document icon. Its System
+rendering follows foreground and selection colors; Obsidian uses its own artwork.
+An explicit `Icon` path remains unchanged application artwork. Specify one icon source.
 
 Every setting below is a flat constructor option and has matching
 `get<Property>()` / `set<Property>(value, notify)` methods. `getLogOptions()`
@@ -1759,7 +1903,8 @@ to false; user gestures and successful clipboard copies notify automatically.
 Skin prefix `Log Viewer` supplies Surface Normal/Hover/Pressed/Disabled, Entry
 Normal/Hover/Selected/Disabled/Alternate, Text Normal/Disabled, Text Selection,
 Severity trace/debug/info/success/warning/error, Scroll Track, Scroll Thumb
-Normal/Hover/Pressed/Disabled and Focus. Entries supply optional icon paths.
+Normal/Hover/Pressed/Disabled and Focus. Entries supply optional icon paths or
+named skin parts through `IconArtwork`.
 `Artwork` replaces the family prefix. Captured state includes options, entries,
 entry/text selection and scroll position; missing UI children are still skipped.
 

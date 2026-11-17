@@ -10,6 +10,7 @@ local _wx       = require("wx");
 local _Controls = require("wxLuma.Controls");
 local _nChecks  = 0;
 local _tFixtures = {};
+local _tFixtureDirectories = {};
 _wx.wxGetApp():SetExitOnFrameDelete(false);
 
 --[[!
@@ -282,12 +283,18 @@ local function run()
     -- the supplied skin instead of their built-in colour fallback.
     local pTemp = assert(os.getenv("TEMP")):gsub("\\", "/").."/";
     local sArtwork = "wxLuma Orb Fixture "..os.time().." "..math.random(1000000);
+    pTemp = pTemp..sArtwork.."/";
+    assert(not _wx.wxDirExists(pTemp) and _wx.wxMkdir(pTemp), "Cannot create isolated fixture root.");
+    _tFixtureDirectories[#_tFixtureDirectories + 1] = pTemp;
+    local pFolder = pTemp.."wxLuma";
+    assert(_wx.wxMkdir(pFolder), "Cannot create fixture object directory.");
+    _tFixtureDirectories[#_tFixtureDirectories + 1] = pFolder;
 
     for _, tMaterial in ipairs({
         {"Track Normal", 120, 40, 170}, {"Fill Normal", 30, 210, 80},
         {"Track Disabled", 60, 40, 70}, {"Fill Disabled", 70, 100, 80}
     }) do
-        local pFile = pTemp.."Control "..sArtwork.." "..tMaterial[1]..".png";
+        local pFile = pFolder.."/Control "..sArtwork.." "..tMaterial[1]..".png";
         local oImage = _wx.wxImage(16, 16);
         oImage:SetRGB(_wx.wxRect(0, 0, 16, 16), tMaterial[2], tMaterial[3], tMaterial[4]);
         check(oImage:SaveFile(pFile, _wx.wxBITMAP_TYPE_PNG), "Save custom material fixture.");
@@ -385,7 +392,7 @@ local function run()
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxYield();
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Widgets.Tabs.setValue(7);
     tWorkbench.Layout();
     _wx.wxYield();
@@ -419,6 +426,8 @@ local bPassed, sError = xpcall(run, debug.traceback);
 for _, pFile in ipairs(_tFixtures) do
     os.remove(pFile);
 end
+-- Delete only this test's empty directories, after releasing its fixture files.
+for nIndex = #_tFixtureDirectories, 1, -1 do _wx.wxRmdir(_tFixtureDirectories[nIndex]); end
 
 if (not bPassed) then
     io.stderr:write(sError.."\n");

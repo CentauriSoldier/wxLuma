@@ -1,3 +1,6 @@
+local _SliderArtwork = require("wxLuma.Core.ControlSliderArtwork");
+local _Border = require("wxLuma.Core.ControlBorder");
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx = require("wx");
 local _Surface = require("wxLuma.Core.ControlSurface");
 local _Events = require("wxLuma.Core.ControlEvents");
@@ -16,6 +19,9 @@ local RangeSlider = {};
 @ret table oComponent Standard surface, get/setValue, get/setRange and get/setStep.
 !]]
 function RangeSlider.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
+    tOptions = _Border.withDefault(tOptions, _wx.wxBORDER_NONE);
+    assert(tOptions.FocusBorder == nil or type(tOptions.FocusBorder) == "boolean", "FocusBorder must be boolean.");
     local nMin, nMax, nStep = tOptions.Min or 0, tOptions.Max or 100, tOptions.Step or 1;
     assert(_finite(nMin) and _finite(nMax) and nMax > nMin and _finite(nMax - nMin), "Invalid range.");
     assert(_finite(nStep) and nStep > 0, "Invalid Step.");
@@ -113,7 +119,8 @@ function RangeSlider.create(oParent, tOptions)
 
     oComponent.pointer = function(sEvent, nX)
         local nWidth = oComponent.Control:GetClientSizeWH();
-        local nValue = nMin + (nX - 16) / math.max(1, nWidth - 32) * (nMax - nMin);
+        local nMargin = _SliderArtwork.margin(oComponent.Control, oComponent.Skin);
+        local nValue = nMin + (nX - nMargin) / math.max(1, nWidth - nMargin * 2) * (nMax - nMin);
         if (sEvent == "down") then
             tDragStart = oComponent.getValue();
             -- Compare both distances directly. A point just left of the upper
@@ -142,19 +149,21 @@ function RangeSlider.create(oParent, tOptions)
     oComponent.draw = function(oDC, nWidth, nHeight)
         if (oComponent.Disposed) then return; end
         local sState = oComponent.getState();
-        tArt.part(oDC, "Surface "..sState, 0, 0, nWidth, nHeight);
-        tArt.part(oDC, "Track "..sState, 16, (nHeight - 8) / 2, math.max(1, nWidth - 32), 8);
-        local nXLow = 16 + (nWidth - 32) * (nLow - nMin) / (nMax - nMin);
-        local nXHigh = 16 + (nWidth - 32) * (nHigh - nMin) / (nMax - nMin);
-        tArt.part(oDC, "Fill "..sState, nXLow, (nHeight - 8) / 2, nXHigh - nXLow, 8);
-        for _, tHandle in ipairs({{"Low", nXLow}, {"High", nXHigh}}) do
-            tArt.part(oDC, "Thumb "..(oComponent.isEnabled() and sActive == tHandle[1] and "Hover" or sState),
-                tHandle[2] - 12, (nHeight - 28) / 2, 24, 28);
+        -- Match the single slider's backdrop as well as its track and thumbs.
+        if (tOptions.Background) then
+            tOptions.Background(oDC, oComponent);
+        else
+            local oColor = _Theme.colour(oComponent.Skin, "Background", 24, 29, 36);
+            local oBrush = _wx.wxBrush(oColor);
+            oDC:SetBackground(oBrush); oDC:Clear(); oBrush:delete(); oColor:delete();
         end
-        if (oComponent.Control:HasFocus()) then tArt.part(oDC, "Focus", 0, 0, nWidth, nHeight); end
+        _SliderArtwork.draw(oComponent.Control, oComponent.Skin, oComponent.Skin.drawOpaque,
+            oDC, nWidth, nHeight, sState, false,
+            {(nLow - nMin) / (nMax - nMin), (nHigh - nMin) / (nMax - nMin)});
     end;
     oComponent.onDestroy = tArt.destroy;
     oComponent.setValue(tValue);
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

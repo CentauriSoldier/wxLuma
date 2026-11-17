@@ -1,3 +1,4 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx          = require("wx");
 local _Surface     = require("wxLuma.Core.ControlSurface");
 local _Events      = require("wxLuma.Core.ControlEvents");
@@ -20,6 +21,7 @@ local _tMax        = {255, 255, 255, 360, 100, 100, 255};
     get/setSwatches, open/close/isOpen and getPreview.
 !]]
 function ColorPicker.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
     assert(tOptions and tOptions.Skin, "ColorPicker requires Skin.");
     local tValue = _Color.rgba(tOptions.Value or {R = 255, G = 255, B = 255});
     local tSwatches = {};
@@ -445,6 +447,7 @@ function ColorPicker.create(oParent, tOptions)
     end);
     tEvents = _Events.attach(oComponent, {oEditor.Control}, {"opened", "closed", "previewChanged",
         "committed", "cancelled", "swatchesChanged"});
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

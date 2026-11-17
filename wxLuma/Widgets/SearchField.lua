@@ -1,3 +1,4 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx     = require("wx");
 local _Editor = require("wxLuma.Core.ControlEditor");
 local _finite = require("wxLuma.Core.ControlNumeric").finite;
@@ -14,6 +15,7 @@ local SearchField = {};
 @ret table oComponent Editor with search/clear and standard value/events APIs.
 !]]
 function SearchField.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
     local nDelay = tOptions.Debounce or 0;
     assert(_finite(nDelay) and nDelay >= 0 and nDelay % 1 == 0, "Invalid search Debounce.");
     local tCopy = {};
@@ -80,6 +82,7 @@ function SearchField.create(oParent, tOptions)
     oComponent.onEditorEnable = function(bEnabled) if (not bEnabled) then oTimer:Stop(); end end;
     oComponent.onEditorDestroy = function() oTimer:Stop(); oTimer:delete(); end;
     oComponent.Control:Connect(oTimer:GetId(), _wx.wxEVT_TIMER, function() oComponent.search(); end);
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

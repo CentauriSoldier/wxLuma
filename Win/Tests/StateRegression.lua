@@ -166,7 +166,7 @@ local function run()
     _wx.wxGetApp():Yield();
 
     -- Exercise the complete existing gallery, including compound controls.
-    local tDemo = assert(loadfile(APP_PATH.."/Tests/UI.lua"))()();
+    local tDemo = assert(loadfile(APP_PATH.."/Tests/GalleryUI.lua"))()();
     local tGallery = tDemo.Window.getObjectState();
     local _, tGalleryReport = tDemo.Window.setObjectState(tGallery);
     check(tGalleryReport.Applied == #tGallery.Objects and tGalleryReport.Skipped == 0,

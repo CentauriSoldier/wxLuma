@@ -1,3 +1,4 @@
+local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx      = require("wx");
 local _Surface = require("wxLuma.Core.ControlSurface");
 local _Events  = require("wxLuma.Core.ControlEvents");
@@ -16,6 +17,7 @@ local StatusBar = {};
 @ret table oComponent Standard surface/events plus item and section APIs.
 !]]
 function StatusBar.create(oParent, tOptions)
+    tOptions = _Theme.options(tOptions, oParent);
     assert(tOptions and tOptions.Skin, "StatusBar requires Skin.");
     local sArtwork = tOptions.Artwork or "Status Bar";
     local tArt = _Artwork.create(tOptions.Skin, sArtwork);
@@ -346,6 +348,7 @@ function StatusBar.create(oParent, tOptions)
     end;
     oComponent.onDestroy = tArt.destroy;
     tEvents = _Events.attach(oComponent, nil, {"itemsChanged", "sectionActivated"});
+    _Theme.finish(oComponent, tOptions);
     return oComponent;
 end
 

@@ -104,7 +104,7 @@ local function run()
         SetData = function(oSelf, oData) sCopied = oData:GetText(); oData:delete(); return true; end,
         Close = function() end,
     };
-    local sIcon = _Luma.Path.."/Images/Controls/Control Log Viewer Icon Normal.png";
+    local sIcon = _Luma.Config.SkinPath.."/LogViewer/Control Log Viewer Icon Normal.png";
     local tEntries = {{Id = "one", Text = "First café 雪 ☃", Icon = sIcon, Timestamp = "10:00:00"},
         {Id = "two", Text = "Warning\nsecond line", Severity = "warning", Timestamp = "10:00:01"},
         {Id = "three", Text = "Last action"}};
@@ -382,7 +382,9 @@ local function run()
         if (math.abs(nY - (tTickPlot.Y + tTickPlot.Height + 3)) < 0.5) then tTickText[sText] = true; nTickText = nTickText + 1; end
         return fDrawText(oTarget, sText, nX, nY);
     end;
-    oChart.draw(oDC, 420, 290); oDC.DrawText = fDrawText;
+    -- Plot geometry is measured in client pixels. Native border styles can
+    -- make the client smaller than the outer dimensions passed to layout.
+    oChart.draw(oDC, oChart.Control:GetClientSizeWH()); oDC.DrawText = fDrawText;
     local nDistinct = 0; for _ in pairs(tTickText) do nDistinct = nDistinct + 1; end
     check(nTickText == 5 and nDistinct == 5, "Axis labels retain distinct fractional tick values even with integer value precision.");
     oChart.setChartOptions({Tooltips = true, TooltipDelay = 500});

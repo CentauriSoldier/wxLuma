@@ -195,13 +195,20 @@ local function run()
     check(nDismissed == 2, "Keyboard and repeated dismissal are changed-only.");
     check(not pcall(oNotice.show, "bad", "invalid", 10) and oNotice.getValue() == "Persistent", "Invalid notification show is atomic.");
 
-    local nObjects = 0; for _ in pairs(_Object.instances()) do nObjects = nObjects + 1; end
+    -- Pin the snapshot while comparing the weak registry. Collection of a
+    -- disposed object from an earlier suite must not look like reconstruction.
+    local tObjects, nObjects = {}, 0;
+    for oObject in pairs(_Object.instances()) do tObjects[oObject] = true; nObjects = nObjects + 1; end
     oDock.float(300, 150, true);
     check(oDock.isFloating() and oDockText.Control:GetId() == nChildId and oDockText.getValue() == "retained", "Floating preserves child identity and values.");
     local tDockState = oDock.getObjectState(); oDock.dock("left", true); oDock.setObjectState(tDockState);
     check(oDock.isFloating() and oDockText.Control:GetId() == nChildId, "Floating placement restores using the existing native host.");
-    local nObjectsAfter = 0; for _ in pairs(_Object.instances()) do nObjectsAfter = nObjectsAfter + 1; end
-    check(nObjectsAfter == nObjects, "Dock state restoration constructs no objects.");
+    local nObjectsAfter, bSameObjects = 0, true;
+    for oObject in pairs(_Object.instances()) do
+        nObjectsAfter = nObjectsAfter + 1;
+        bSameObjects = bSameObjects and tObjects[oObject] == true;
+    end
+    check(bSameObjects and nObjectsAfter == nObjects, "Dock state restoration constructs no objects.");
     oDock.dock("right", true);
     local nX, nY = oDock.Control:GetPositionXY();
     check(not oDock.isFloating() and nX == 160 and nY == 0, "Edge docking fits the original owner.");
@@ -228,7 +235,12 @@ local function run()
     for _, oWidget in ipairs({oText, oRange, oKnob, oDate, oPath, oNotice, oDock}) do
         local nClicks = 0;
         oWidget.on("rightDown", function() nClicks = nClicks + 1; end);
-        mouse(oWidget.Control, _wx.wxEVT_RIGHT_DOWN, 10, 10);
+        if (oWidget == oKnob) then
+            local nW, nH = oKnob.Control:GetClientSizeWH();
+            mouse(oWidget.Control, _wx.wxEVT_RIGHT_DOWN, nW / 2, 2 + math.min(nW, nH - 26) / 2);
+        else
+            mouse(oWidget.Control, _wx.wxEVT_RIGHT_DOWN, 10, 10);
+        end
         check(nClicks == 1, oWidget.Kind.." supports native right-click audio events.");
         oWidget.draw(oDC, 300, oWidget == oKnob and 180 or 60);
         oWidget.setEnabled(false);

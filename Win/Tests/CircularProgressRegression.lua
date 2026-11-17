@@ -187,7 +187,7 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
 
-    local tWorkbench = require("Tests.UI")(_wx.NULL);
+    local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Widgets.Tabs.setValue(3);
     tWorkbench.Layout();
     _wx.wxYield();
