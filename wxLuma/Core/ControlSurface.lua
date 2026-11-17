@@ -17,32 +17,15 @@ local ControlSurface = {};
     (ancestor native window/visual component) and ContainmentOverflow (hide/allow).
     Nil settings inherit ancestor policy, then top-level/default policy.
     Border defaults to wxBORDER_DEFAULT; native border constants provide overrides.
-    TransparentBackground requests native transparency or a native parent-background surface.
 @param string sKind The component kind.
 @ret table oComponent The public component object.
 !]]
 function ControlSurface.create(oParent, tOptions, sKind)
     tOptions = _Theme.options(tOptions, oParent);
     assert(tOptions and tOptions.Skin, "Control options require a shared Skin.");
-    local bTransparent = tOptions.TransparentBackground == true;
-    local bNativeTransparent = bTransparent and oParent:IsTransparentBackgroundSupported();
-    local oControl;
-    local nStyle = _Border.style(tOptions, _wx.wxWANTS_CHARS + _wx.wxTAB_TRAVERSAL);
-    if (bTransparent and not bNativeTransparent) then
-        -- Native static text inherits themed parent brushes, unlike wxControl.
-        -- Its label stays empty; the component supplies all foreground drawing.
-        oControl = _wx.wxStaticText(oParent, _wx.wxID_ANY, "", _wx.wxDefaultPosition,
-            _wx.wxDefaultSize, nStyle + _wx.wxST_NO_AUTORESIZE);
-        oControl:SetBackgroundStyle(_wx.wxBG_STYLE_ERASE);
-        oControl:Connect(_wx.wxEVT_ERASE_BACKGROUND, function(oEvent)
-            oControl:SetBackgroundColour(_wx.wxNullColour);
-            oEvent:Skip();
-        end);
-    else
-        oControl = _wx.wxControl();
-        oControl:SetBackgroundStyle(bNativeTransparent and _wx.wxBG_STYLE_TRANSPARENT or _wx.wxBG_STYLE_PAINT);
-        oControl:Create(oParent, _wx.wxID_ANY, _wx.wxDefaultPosition, _wx.wxDefaultSize, nStyle);
-    end
+    local oControl = _wx.wxControl(oParent, _wx.wxID_ANY, _wx.wxDefaultPosition, _wx.wxDefaultSize,
+        _Border.style(tOptions, _wx.wxWANTS_CHARS + _wx.wxTAB_TRAVERSAL));
+    oControl:SetBackgroundStyle(_wx.wxBG_STYLE_PAINT);
     oControl:SetBackgroundColour(_wx.wxColour(24, 29, 36));
     oControl:SetName(tOptions.Text or sKind);
     local bLayoutApplied = false;
@@ -67,11 +50,11 @@ function ControlSurface.create(oParent, tOptions, sKind)
 
     --[[!
     @fqxn wxLuma.UI.ControlSurface.refresh
-    @desc Schedules a repaint unless disposed; parent-background surfaces request native erasure.
+    @desc Schedules an erase-free repaint unless the component is disposed.
     !]]
     function oComponent.refresh()
         if (not oComponent.Disposed) then
-            oControl:Refresh(bTransparent and not bNativeTransparent);
+            oControl:Refresh(false);
         end
     end
 
@@ -333,12 +316,7 @@ function ControlSurface.create(oParent, tOptions, sKind)
             local oBox = oControl:GetUpdateRegion():GetBox();
             oComponent.PaintTop, oComponent.PaintBottom = oBox:GetY(), oBox:GetY() + oBox:GetHeight();
         end
-        local oDC;
-        if (bTransparent) then
-            oDC = _wx.wxPaintDC(oControl);
-        else
-            oDC = _wx.wxAutoBufferedPaintDC(oControl);
-        end
+        local oDC = _wx.wxAutoBufferedPaintDC(oControl);
         oComponent.draw(oDC, oControl:GetClientSizeWH());
         oComponent.PaintTop, oComponent.PaintBottom = nil, nil;
         oDC:delete();

@@ -20,17 +20,12 @@ local _tModes = {none = true, revolve = true, alternate = true};
     artwork defines their complete appearance and rotates with the dial value.
 @param wxWindow oParent Native owner.
 @param table tOptions Skin, optional Min (0), Max (100), Value (Min), Rate (1),
-    Continuity (none/revolve/alternate), Artwork (Knob), Enabled, OnChange,
-    ShowBackground (false), ShowValue (false).
+    Continuity (none/revolve/alternate), Artwork (Knob), Enabled, OnChange.
 @ret table oComponent Numeric value/range/rate/continuity/direction APIs and shared events.
 !]]
 function Knob.create(oParent, tOptions)
     tOptions = _Theme.options(tOptions, oParent);
     tOptions = _Border.withDefault(tOptions, _wx.wxBORDER_NONE);
-    assert(tOptions.ShowBackground == nil or type(tOptions.ShowBackground) == "boolean", "Invalid ShowBackground.");
-    assert(tOptions.ShowValue == nil or type(tOptions.ShowValue) == "boolean", "Invalid ShowValue.");
-    local bBackground, bValue = tOptions.ShowBackground == true, tOptions.ShowValue == true;
-    tOptions.TransparentBackground = not bBackground;
     local nMin, nMax = tOptions.Min or 0, tOptions.Max or 100;
     local nRate, sMode = tOptions.Rate or 1, tOptions.Continuity or "none";
 
@@ -215,8 +210,8 @@ function Knob.create(oParent, tOptions)
     function oComponent.hitTest(nX, nY)
         if (not oComponent.isEnabled() or not _finite(nX) or not _finite(nY)) then return false; end
         local nWidth, nHeight = oComponent.Control:GetClientSizeWH();
-        local nDiameter = math.max(1, math.min(nWidth, nHeight - (bValue and 26 or 0)));
-        local nCX, nCY = nWidth / 2, (bValue and 2 or (nHeight - nDiameter) / 2) + nDiameter / 2;
+        local nDiameter = math.max(1, math.min(nWidth, nHeight - 26));
+        local nCX, nCY = nWidth / 2, 2 + nDiameter / 2;
         return (nX - nCX)^2 + (nY - nCY)^2 <= (nDiameter / 2)^2;
     end
     oComponent.PointerHitTest = oComponent.hitTest;
@@ -243,8 +238,8 @@ function Knob.create(oParent, tOptions)
     oComponent.draw = function(oDC, nWidth, nHeight)
         if (oComponent.Disposed) then return; end
         local sState = oComponent.getState();
-        local nDiameter = math.max(1, math.min(nWidth, nHeight - (bValue and 26 or 0)));
-        local nX, nY = (nWidth - nDiameter) / 2, bValue and 2 or (nHeight - nDiameter) / 2;
+        local nDiameter = math.max(1, math.min(nWidth, nHeight - 26));
+        local nX, nY = (nWidth - nDiameter) / 2, 2;
         if (not tRender or tRender.Width ~= nWidth or tRender.Height ~= nHeight
             or tRender.State ~= sState or tRender.Fraction ~= (nValue - nMin) / (nMax - nMin)) then
             -- Render the face and needle at triple resolution, then filter down.
@@ -256,13 +251,8 @@ function Knob.create(oParent, tOptions)
             local oMemory = _wx.wxMemoryDC(); oMemory:SelectObject(oBitmap);
             -- Hover and dragging may affect the dial artwork, never its
             -- rectangular background. Focus adds no surrounding decoration.
-            if (bBackground) then
-                tArt.part(oMemory, oComponent.isEnabled() and "Surface Normal" or "Surface Disabled",
-                    0, 0, nWidth * nScale, nHeight * nScale);
-            else
-                local oBrush = _wx.wxBrush(_wx.wxColour(255, 0, 255));
-                oMemory:SetBackground(oBrush); oMemory:Clear(); oBrush:delete();
-            end
+            tArt.part(oMemory, oComponent.isEnabled() and "Surface Normal" or "Surface Disabled",
+                0, 0, nWidth * nScale, nHeight * nScale);
             tArt.part(oMemory, "Face "..sState, nX * nScale, nY * nScale, nDiameter * nScale, nDiameter * nScale);
             local tNeedle = tNeedles[sState];
             if (not tNeedle) then
@@ -288,21 +278,16 @@ function Knob.create(oParent, tOptions)
             oNeedleBitmap:delete(); oRotated:delete();
             oMemory:SelectObject(_wx.wxNullBitmap); oMemory:delete();
             local oImage = oBitmap:ConvertToImage(); oBitmap:delete();
-            if (not bBackground) then
-                oImage:SetMaskColour(255, 0, 255); oImage:InitAlpha(); oImage:SetMask(false);
-            end
             local oScaled = oImage:Scale(nWidth, nHeight, _wx.wxIMAGE_QUALITY_HIGH); oImage:delete();
             tRender = {Width = nWidth, Height = nHeight, State = sState,
                 Fraction = (nValue - nMin) / (nMax - nMin), Bitmap = _wx.wxBitmap(oScaled)};
             oScaled:delete();
         end
-        oDC:DrawBitmap(tRender.Bitmap, 0, 0, not bBackground);
-        if (bValue) then
-            local sText = string.format("%.4g", nValue);
-            oDC:SetFont(oComponent.Skin.Font);
-            local nTextWidth = oDC:GetTextExtent(sText);
-            tArt.text(oDC, sText, (nWidth - nTextWidth) / 2, math.max(0, nHeight - 22), oComponent.isEnabled());
-        end
+        oDC:DrawBitmap(tRender.Bitmap, 0, 0, false);
+        local sText = string.format("%.4g", nValue);
+        oDC:SetFont(oComponent.Skin.Font);
+        local nTextWidth = oDC:GetTextExtent(sText);
+        tArt.text(oDC, sText, (nWidth - nTextWidth) / 2, math.max(0, nHeight - 22), oComponent.isEnabled());
     end;
     --[[!
     @fqxn wxLuma.UI.Knob.onThemeChanged
