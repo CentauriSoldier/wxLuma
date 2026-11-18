@@ -8,6 +8,7 @@ local _Selection   = require("wxLuma.Core.ControlSelection");
 local _Events      = require("wxLuma.Core.ControlEvents");
 local _Checks      = require("wxLuma.Core.ControlChecks");
 local _Artwork     = require("wxLuma.Core.ControlArtwork");
+local _Options     = require("wxLuma.Core.ControlOptions");
 local List         = {};
 
 --[[!
@@ -27,11 +28,16 @@ function List.create(oParent, tOptions, sKind)
     tOptions = _Theme.options(tOptions, oParent);
     -- ListEx shares this engine and receives its own single proxy identity.
     assert(sKind == nil or sKind == "ListEx", "Invalid shared list identity.");
+    local tInitial = tOptions.Items;
+    if (tInitial == nil) then tInitial = {}; end
+    -- Validate sequence shape before rendering resources or native children
+    -- are created; ipairs alone would silently truncate a sparse input.
+    _Options.array(tInitial);
     assert(tOptions.Checkboxes == nil or type(tOptions.Checkboxes) == "boolean", "Checkboxes must be boolean.");
     if (tOptions.Checked ~= nil) then
         _Selection.validate(tOptions.Checked, function(nIndex)
             return _Numeric.finite(nIndex) and nIndex % 1 == 0 and nIndex >= 1
-                and nIndex <= #(tOptions.Items or {});
+                and nIndex <= #tInitial;
         end, true);
     end
     local tArt = tOptions.Artwork and _Artwork.create(tOptions.Skin, tOptions.Artwork);
@@ -409,7 +415,7 @@ function List.create(oParent, tOptions, sKind)
     @ret table oList This list object.
     !]]
     function oList.setItems(tItems, bNotify)
-        assert(type(tItems) == "table", "List Items must be an array.");
+        _Options.array(tItems);
         local tCopy = {};
 
         for nIndex, vItem in ipairs(tItems) do
@@ -1029,7 +1035,7 @@ function List.create(oParent, tOptions, sKind)
                 Item = oList.getItem(nIndex)};
         end,
     });
-    oList.setItems(tOptions.Items);
+    oList.setItems(tInitial);
     oList.setValue(tOptions.Value or 0);
     oList.setCheckedItems(tOptions.Checked or {});
     oList.setEnabled(tOptions.Enabled ~= false);

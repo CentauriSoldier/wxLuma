@@ -62,6 +62,7 @@ end
 @desc Draws semantic control parts from system resources and vector glyphs.
     Native renderer operations are used when a native host is supplied. Unique
     shapes remain custom; no raster skin is needed for either path.
+    System switches use rectangular track and thumb geometry drawn by the DC.
 !]]
 function SystemArtwork.draw(oTheme, oWindow, oDC, sName, nX, nY, nWidth, nHeight, bMaterial)
     if (nWidth < 1 or nHeight < 1) then return; end
@@ -129,15 +130,19 @@ function SystemArtwork.draw(oTheme, oWindow, oDC, sName, nX, nY, nWidth, nHeight
         local bVertical = sName:find("Vertical", 1, true);
         local bOn = sName:find(" On", 1, true) ~= nil;
         if (sName:find("Reversed", 1, true)) then bOn = not bOn; end
-        -- The pill is a distinct recessed track, not another patch of the
-        -- parent button face. Keep its silhouette legible on light surfaces.
+        -- Keep the recessed rectangular track distinct from the parent surface.
+        -- Straight DC edges need no graphics context or curve antialiasing.
         local oTrack = _wx.wxBrush(oTheme.color("Border", bEnabled));
         oDC:SetBrush(oTrack);
-        oDC:DrawRoundedRectangle(nX + 1, nY + 1, nWidth - 2, nHeight - 2, math.min(nWidth, nHeight) / 2);
-        oTrack:delete();
-        local oThumb = _wx.wxBrush(oTheme.color(bOn and "Fill" or "Editor", bEnabled)); oDC:SetBrush(oThumb);
-        oDC:DrawCircle(bVertical and nCX or nX + nWidth * (bOn and 0.75 or 0.25),
-            bVertical and nY + nHeight * (bOn and 0.25 or 0.75) or nCY, math.min(nWidth, nHeight) * 0.35); oThumb:delete();
+        oDC:DrawRectangle(nX + 1, nY + 1, nWidth - 2, nHeight - 2);
+        local oThumb = _wx.wxBrush(oTheme.color(bOn and "Fill" or "Editor", bEnabled));
+        -- Preserve the original thumb center and extent with a square outline.
+        local nThumbHalf = math.min(nWidth, nHeight) * 0.35;
+        local nThumbX = bVertical and nCX or nX + nWidth * (bOn and 0.75 or 0.25);
+        local nThumbY = bVertical and nY + nHeight * (bOn and 0.25 or 0.75) or nCY;
+        oDC:SetBrush(oThumb);
+        oDC:DrawRectangle(nThumbX - nThumbHalf, nThumbY - nThumbHalf, nThumbHalf * 2, nThumbHalf * 2);
+        oTrack:delete(); oThumb:delete();
     elseif (bGlyph) then
         oDC:SetPen(oInk); oDC:SetBrush(_wx.wxTRANSPARENT_BRUSH);
         local nDX, nDY = math.max(2, nWidth / 4), math.max(2, nHeight / 4);

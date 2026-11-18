@@ -10,7 +10,7 @@ local _wx = require("wx");
 local _pFramework = require("wxLuma")().Config.ImagePath;
 local _Controls = require("wxLuma.Controls");
 local _nChecks = 0;
-local _pFixture = APP_PATH.."/Tests/IrisImageFixture.png";
+local _pFixture = os.tmpname();
 _wx.wxGetApp():SetExitOnFrameDelete(false);
 
 --[[!
@@ -225,7 +225,9 @@ local function run()
 
     oDC:SelectObject(_wx.wxNullBitmap);
     local oPreviewImage = oPreview:ConvertToImage();
-    check(oPreviewImage:SaveFile(APP_PATH.."/Tests/IrisProgressPreview.png", _wx.wxBITMAP_TYPE_PNG), "production preview saved");
+    if (arg[2] == "--showcase") then
+        check(oPreviewImage:SaveFile(APP_PATH.."/Tests/IrisProgressPreview.png", _wx.wxBITMAP_TYPE_PNG), "production preview saved");
+    end
     oPreviewImage:delete();
     oDC:delete();
     oPreview:delete();
@@ -233,6 +235,8 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Frame:SetClientSize(_wx.wxSize(920, 780));
     tWorkbench.Widgets.Tabs.setValue(7);

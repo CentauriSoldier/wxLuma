@@ -258,6 +258,8 @@ local function run()
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxYield();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
 
     for _, tPair in ipairs({{"List", "ListMultiSelect", 2}, {"Table", "TableMultiSelect", 6}, {"ListEx", "ListExMultiSelect", 6}}) do

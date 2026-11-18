@@ -1,5 +1,7 @@
-# Run control, gallery, skin-layout and external-skin regressions using the packaged runtime.
+# Run current component regressions using the packaged runtime; -Showcase opts into gallery checks.
 # Syntax loading does not execute other test scripts or write result files.
+param([switch]$Showcase)
+
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent).Replace('\', '/')
 
@@ -58,13 +60,28 @@ $taskFiles = Get-ChildItem -LiteralPath $taskRoot -Recurse -File -Filter '*.lua'
 $taskChecks = foreach ($taskFile in $taskFiles) {
     "assert(loadfile([==[$($taskFile.FullName)]==]));"
 }
-$taskCode = ($taskChecks -join "`n") + "`nAPP_PATH=[==[$taskRoot/Win]==]; assert(loadfile(APP_PATH..'/Tests/EventHooksRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/InspectorRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/DemoGalleryRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/StateRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/AdditionalControlsRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/SwitchLEDRegression.lua'))();"
+$taskMode = if ($Showcase) { '--showcase' } else { '--headless' }
+$taskCode = ($taskChecks -join "`n") + "`nAPP_PATH=[==[$taskRoot/Win]==]; arg={[1]=APP_PATH,[2]='$taskMode'}; assert(loadfile(APP_PATH..'/Tests/EventHooksRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/InspectorRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/StateRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/AdditionalControlsRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/SwitchLEDRegression.lua'))();"
 $taskCode += " assert(loadfile(APP_PATH..'/Tests/LogChartRegression.lua'))();"
 $taskCode += " require('Win.Tests.SkinLayoutRegression').run(); require('Win.Tests.ThemeProofRegression').run();"
 $taskCode += " require('Win.Tests.SystemRenderingRegression').run();"
 $taskCode += " require('Win.Tests.BorderRegression').run();"
 $taskCode += " require('Win.Tests.TaskDeskRegression').run();"
-$taskCode += " arg={[1]=APP_PATH}; assert(loadfile(APP_PATH..'/Tests/ProgressSkinRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/OrbProgressRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/DisplayContainersRegression.lua'))();"
+$taskCode += " require('Win.Tests.ImageViewerRegression').run();"
+$taskCode += " require('Win.Tests.FileBrowserRegression').run();"
+$taskCode += " require('Win.Tests.UnifiedProgressRegression').run();"
+$taskCode += " require('Win.Tests.PolygonProgressRegression').run();"
+$taskCode += " require('Win.Tests.ProgressReserveMatrixRegression').run();"
+$taskCode += " arg={[1]=APP_PATH,[2]='$taskMode'}; assert(loadfile(APP_PATH..'/Tests/DataLayoutRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/ListExRegression.lua'))();"
+$taskCode += " assert(loadfile(APP_PATH..'/Tests/ProgressSkinRegression.lua'))(); assert(loadfile(APP_PATH..'/Tests/OrbProgressRegression.lua'))();"
+# Historical before/after benchmarks require external backups; current behavior
+# suites run here, while gallery sections remain behind the explicit mode flag.
+foreach ($taskSuite in @('CheckTreeEx', 'Containment', 'EditorsDialog', 'IrisProgress', 'Menu', 'MultiSelection', 'OrbRendering', 'ProgressGeometry', 'ProgressReserve', 'ReservePlan', 'ReserveValue', 'Tabs', 'Tools', 'CircularProgress', 'DisplayContainers')) {
+    $taskCode += " arg={[1]=APP_PATH,[2]='$taskMode'}; assert(loadfile(APP_PATH..'/Tests/$($taskSuite)Regression.lua'))();"
+}
+if ($Showcase) {
+    $taskCode += " assert(loadfile(APP_PATH..'/Tests/DemoGalleryRegression.lua'))();"
+}
 $taskResult = [WxLumaEventHookHost]::Run($taskRoot, $taskCode)
 if ($taskResult -ne 0) { throw "wxLuma regression failed: $taskResult" }
 Write-Output "Syntax loading passed for $($taskFiles.Count) Lua files."

@@ -384,7 +384,9 @@ local function run()
 
     oPreviewDC:SelectObject(_wx.wxNullBitmap);
     local oPreviewImage = oPreview:ConvertToImage();
-    check(oPreviewImage:SaveFile(APP_PATH.."/Tests/OrbProgressPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save production-render preview.");
+    if (arg[2] == "--showcase") then
+        check(oPreviewImage:SaveFile(APP_PATH.."/Tests/OrbProgressPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save production-render preview.");
+    end
     oPreviewImage:delete();
     oPreviewDC:delete();
     oPreviewBrush:delete();

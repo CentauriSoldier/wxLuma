@@ -93,14 +93,17 @@ function ControlSurface.create(oParent, tOptions, sKind)
 
     --[[!
     @fqxn wxLuma.UI.ControlSurface.setEnabled
-    @desc Cancels active input, changes native enabled state and refreshes the component.
+    @desc Cancels active input, changes this control's own enabled setting and
+        refreshes it. A disabled ancestor does not overwrite the local setting.
     @param boolean bEnabled Whether the component is enabled.
     @ret table oComponent This public component object.
     !]]
     function oComponent.setEnabled(bEnabled)
         assert(type(bEnabled) == "boolean", "Enabled flag must be boolean.");
         local sOldState = oComponent.getState();
-        local bChanged  = oControl:IsEnabled() ~= bEnabled;
+        -- Effective availability includes ancestors; compare the local flag so
+        -- a disable request is retained even while a parent is already disabled.
+        local bChanged  = oControl:IsThisEnabled() ~= bEnabled;
         oComponent.cancel();
         oComponent.Hover = false;
 

@@ -102,6 +102,21 @@ local function exercise(oComponent, oTarget)
     mouse(oTarget, _wx.wxEVT_RIGHT_UP);
     check(tCounts.rightClick == 1, "Removed audio hook remains removed.");
     oComponent.off("pointerEnter").off("pointerLeave");
+
+    -- Listener-local snapshots cannot corrupt later listeners or the emitter's data.
+    local tPayload = {Value = {Text = "original"}, Target = oTarget};
+    tPayload.Value.Self = tPayload.Value;
+    oComponent.on("regressionEvent", function(_, tEvent)
+        tEvent.Name = "changed"; tEvent.Value.Text = "changed";
+    end);
+    oComponent.on("regressionEvent", function(_, tEvent)
+        check(tEvent.Name == "regressionEvent" and tEvent.Value.Text == "original"
+            and tEvent.Value.Self == tEvent.Value and tEvent.Source == oComponent and tEvent.Target == oTarget,
+            "Event snapshots isolate nested data and preserve resource identities.");
+    end);
+    _Events.attach(oComponent).emit("regressionEvent", tPayload);
+    check(tPayload.Value.Text == "original", "Event listeners cannot mutate the original payload.");
+    oComponent.off("regressionEvent");
 end
 
 --[[!
@@ -190,6 +205,67 @@ local function run()
     oAction.handleKey("up", _wx.WXK_RETURN);
     check(nActions == 2 and nClicks == 1, "Keyboard activation does not fabricate a mouse click.");
     oAction.destroy();
+
+    -- Rejected item updates must preserve the open preview, not silently
+    -- cancel it before List's atomic validation reports the invalid data.
+    local nDropdownChanges = 0;
+    local oDropdown = _Controls.dropdown(oPanel, {Skin = oSkin, Items = {"First", "Second"}, Value = 1,
+        OnChange = function() nDropdownChanges = nDropdownChanges + 1; end});
+    oDropdown.layout(20, 20, 220, 40); oDropdown.open(); oDropdown.List.setValue(2);
+    check(oDropdown.isOpen(), "Dropdown fixture has an open preview.");
+    check(not pcall(oDropdown.setItems, {17}) and oDropdown.isOpen() and oDropdown.getValue() == 1
+        and oDropdown.List.getValue() == 2 and oDropdown.getText() == "First",
+        "Rejected dropdown items retain popup, preview, accepted value and contents.");
+    oDropdown.setItems({"Replacement"});
+    check(not oDropdown.isOpen() and oDropdown.getValue() == 1 and oDropdown.getText() == "Replacement"
+        and nDropdownChanges == 0, "Valid dropdown replacement closes and adopts clamped selection silently.");
+    oDropdown.destroy();
+
+    -- Public group selection must not let a foreign member invalidate either
+    -- group's exclusivity or silently change what getValue reports.
+    local oOtherGroup = _Controls.radioGroup();
+    local oOtherRadio = _Controls.radio(oPanel, {Skin = oSkin, Text = "Other", Group = oOtherGroup, Value = "other", Selected = true});
+    tObjects.radio.setValue(true);
+    check(not pcall(oGroup.select, oOtherRadio, true) and oGroup.getValue() == "one"
+        and tObjects.radio.getValue() and oOtherGroup.getValue() == "other" and oOtherRadio.getValue(),
+        "Foreign radio selection is rejected without changing either group's selection.");
+    check(not pcall(oGroup.select, {}) and not pcall(oGroup.select, nil) and oGroup.getValue() == "one",
+        "Unregistered/nil radio members cannot clear valid group state.");
+    oOtherRadio.destroy();
+    check(not pcall(oOtherGroup.select, oOtherRadio) and oOtherGroup.getValue() == nil,
+        "Retired radio members cannot be selected again.");
+
+    -- Exercise both shared bases: parent availability must not substitute for
+    -- a child's own flag, including when its value is saved under that parent.
+    for _, sFactory in ipairs({"button", "label"}) do
+        local oObject = tObjects[sFactory]; oObject.setEnabled(true);
+        oPanel:Enable(false); oObject.setEnabled(false);
+        check(not oObject.Control:IsThisEnabled(), "Disabled ancestor does not swallow a local disable: "..sFactory);
+        check(oObject.getObjectState().Objects[1].Properties.Enabled[1] == false,
+            "State captures the local disabled policy under a disabled ancestor: "..sFactory);
+        oPanel:Enable(true);
+        check(not oObject.isEnabled(), "Re-enabling a parent preserves an explicitly disabled child: "..sFactory);
+        oPanel:Enable(false); oObject.setEnabled(true);
+        check(oObject.Control:IsThisEnabled() and not oObject.isEnabled(),
+            "A local enable request preserves inherited disabling: "..sFactory);
+        oPanel:Enable(true);
+        check(oObject.isEnabled(), "Parent re-enable reveals the retained local enable: "..sFactory);
+    end
+
+    -- Lazy section hosts retain their own policy while a parent is disabled.
+    local oStatus = tObjects.statusBar;
+    oStatus.setItems({{Id = "custom", Text = "Custom"}, {Id = "second", Text = "Second"}});
+    oPanel:Enable(false);
+    local oHost = oStatus.getSection("custom");
+    check(oHost:IsThisEnabled() and not oHost:IsEnabled(), "New status sections retain local enabling under disabled ancestors.");
+    oPanel:Enable(true);
+    check(oHost:IsEnabled(), "Status sections become available when their ancestor is enabled.");
+    oPanel:Enable(false); oStatus.setEnabled(false);
+    local oSecondHost = oStatus.getSection("second");
+    oPanel:Enable(true);
+    check(not oSecondHost:IsThisEnabled() and not oSecondHost:IsEnabled(), "New sections preserve an explicitly disabled status bar.");
+    oStatus.setEnabled(true);
+    check(oHost:IsEnabled() and oSecondHost:IsEnabled(), "Enabling a status bar enables its section hosts.");
 
     -- Existing widget-specific events share the base emitter after extension.
     local nValues, nSelections = 0, 0;

@@ -138,6 +138,13 @@ adapter supplies `capture(object)`, `restore(object, data)` and optionally
 Adapters operate on existing objects; native handles and functions are rejected
 instead of being copied into saves.
 
+An adapter may specify `OwnsChildren = true` when it captures/restores the entire
+composite model and derives its existing child controls from that model. Such
+private children are omitted from capture/matching rather than replayed afterward.
+The adapter is responsible for its complete subtree and enabled policy. This is
+used by FileBrowser to keep directory, filters, table and history coherent.
+`StateRegression.lua` accepts `arg[2] = "--headless"` to skip its showcase pass.
+
 Encoding this table for disk is a separate application choice: JSON, LuaEx or
 another serializer can be used. wxLuma neither loads nor requires any of them.
 
@@ -484,6 +491,109 @@ GlobeProgress and RadialProgress also use dedicated 256 x 256 opaque material im
 
 
 ## Progress controls
+
+### Numeric progress interface (prototype)
+
+One constructor can select the existing non-Iris progress behaviors:
+
+```lua
+local P = wxLuma.Progress;
+local oMeter = wxLuma.Controls.progress(oParent, {
+    Shape = P.Shape.CIRCLE,
+    FillMode = P.Fill.ANGULAR,
+    Direction = P.Direction.REVERSE,
+    Min = 0, Max = 100, Value = 60, Reserved = 25,
+    StartAngle = 90, ReserveStartAngle = 270,
+    ReserveDirection = P.Direction.FORWARD,
+});
+oMeter.setFillDirection(P.Direction.FORWARD, true);
+```
+
+`P.Shape.RECTANGLE = 0`, `CIRCLE = 1`, `POLYGON = 2`; `P.Fill.LINEAR = 0`, `RADIAL = 1`,
+`ANGULAR = 2`; `P.Direction.FORWARD = 0`, `REVERSE = 1`. Zero is an explicit value.
+`P.create(parent, options)` uses the same configured factory as `Controls.progress`.
+
+| Shape | FillMode | Current behavior |
+| --- | --- | --- |
+| RECTANGLE | LINEAR | Progress bar |
+| CIRCLE | LINEAR | Globe with a straight fill level |
+| CIRCLE | RADIAL | Concentric inward/outward fill |
+| CIRCLE | ANGULAR | Arc/ring, or pie with InnerRadius = 0 |
+| RECTANGLE | RADIAL / ANGULAR | Concentric or angular fill clipped to a rectangle |
+| POLYGON | LINEAR / RADIAL / ANGULAR | Fill clipped to normalized polygon vertices |
+
+For `Shape = P.Shape.POLYGON`, supply `Polygon = {{X = 0.5, Y = 0},
+{X = 1, Y = 0.3}, {X = 0.85, Y = 1}, {X = 0.15, Y = 1}, {X = 0, Y = 0.3}}`.
+Vertices use 0..1 coordinates. Simple convex and concave polygons with 3..64
+vertices are supported; degenerate, sparse, repeated-edge and self-intersecting
+polygons are rejected before native creation. `getPolygon()` returns a copy;
+`setPolygon(vertices, notify)` validates the entire replacement and emits
+`polygonChanged` only when the silhouette changes. Object state includes vertices.
+
+Polygon and rectangular radial/angular painters use cached supersampled scanline
+masks. Supersampling is 2 (default) or 4. `ReserveRenderer = "auto"` and `"strips"`
+use that shape painter; the disc-only `"native"` reserve backend is explicitly
+rejected for these shapes. Existing circle renderers retain their native/strips
+options. New angular silhouettes default to a solid pie; explicit Thickness or
+InnerRadius/OuterRadius selects a ring clipped to the silhouette. Radial distance
+is measured from the bounding-box center to the farthest vertex, not filled area.
+
+FORWARD means left-to-right for horizontal linear fill, bottom-to-top for vertical
+linear fill, outward for radial fill, and clockwise for angular fill. REVERSE means
+the opposite. `getShape()` and `getFillMode()` report construction selections.
+`getFillDirection()` / `setFillDirection(number, notify)` provide numeric runtime
+direction; the existing mode-specific `get/setOrigin`, `get/setOrientation`, and
+`get/setDirection` methods and their event payloads retain their original contracts.
+
+All existing mode-specific constructor options pass through, including skin/artwork,
+color, text, outlines, radii, arc Thickness/StartAngle, disc Supersampling and
+ReserveRenderer. Default appearance and artwork remain those of the selected painter.
+Existing factories remain available; calls without the numeric selectors keep the
+original rectangular `progress` behavior.
+
+Reserved capacity still clamps Value to `Max - Reserved`. Numeric ReserveDirection
+maps independently; `get/setReserveFillDirection` use the same constants, with nil
+restoring automatic placement. Existing ReserveOrigin/ReserveDirection and arc
+ReserveStartAngle options remain available. A perpendicular linear ReserveOrigin
+has no forward/reverse equivalent: `getReserveFillDirection()` returns nil and its
+explicit edge as a second result; `getReserveOrigin()` retains that edge directly.
+
+This prototype selects a painter at construction. It does not yet merge all painter
+implementations, change a live object's shape/mode, decode image masks, or support
+arbitrary linear fill angles. All three fill modes support each declared shape.
+Iris remains separate. Object type/state identity remains that of the selected painter.
+
+Restart `Win/test.exe`, open Resources and scroll to Unified progress. The top row
+uses the numeric interface; the bottom row uses the original objects. Capacity,
+direction and reserve controls operate both rows for comparison. Automated exact-pixel
+parity checks run in `UnifiedProgressRegression.lua` as part of the default suite.
+
+Immediately below it, Polygon progress demonstrates linear, radial and angular
+polygons. It shares the capacity/fill-direction/reserved-amount controls above and
+adds convex/concave silhouette, independent reserve direction, radial-band,
+start-angle and reserve-start-angle selectors.
+
+`ProgressReserveMatrixRegression.lua` exhausts a declared finite grid: rectangle,
+circle, convex and concave polygons; all four linear origins and five reserve
+origins (automatic plus four edges); both radial directions and three reserve
+directions (automatic plus both); both angular directions with the same reserve
+choices; bands 0..100, 25..90 and 60..100 plus angular pixel Thickness; start angles
+0, 45, 90, 180, 270, 359 and automatic/independent reserve angles; five reserved
+fractions and five usable-current fractions. It checks 4,184 geometries and
+104,600 masks against an independent pixel reference. Floating-point samples
+exactly on a discontinuous boundary are counted separately; non-overlap, coverage,
+empty/full and fully reserved invariants still apply to every interior sample.
+`PolygonProgressRegression.lua` also tests native draws in both themes, enabled
+states and supersampling settings, every numeric direction pairing, state and cache
+reuse. This finite grid does not claim to enumerate infinitely many real-valued
+angles, vertices or values.
+
+Value-only shape updates reuse polygon scanline geometry, a fixed track/reserve
+layer and native work buffers; only usable fill spans are repainted. Boundary
+pixels on reserve edges are classified independently of the moving fill. Cached
+composition is checked against the full painter, including boundary pixels.
+The public `wxLuma.Progress.create` Dox comment contains HTML option tables,
+reserve/state/event details and seven executable examples.
 
 ### Progress geometry
 
@@ -1089,6 +1199,198 @@ Menus expose standard on/off mouse, keyboard, focus, enabled, size and lifecycle
 The Menus workbench category demonstrates both opening methods, mixed shapes, images plus text, clipping/overlap, disabled actions, multi-level submenus, nested overflow and runtime direction/angle/spacing/radius controls.
 
 
+## File browser
+
+`Controls.fileBrowser(parent, options)` embeds a read-only directory browser with
+Back, Next (forward), Up, Reload, editable directory address, name filter, hidden
+entry toggle and a native report table. Columns are Name, Type, Size (bytes) and
+Modified. Filesystem reads enumerate only the current directory; no recursive
+scan, file modification or external application launch occurs. Reads are
+synchronous. Each successful read replaces the listing as one batch.
+
+```lua
+local oBrowser = Controls.fileBrowser(oParent, {
+    Directory = pProject,
+    Pattern = "*.lua;*.md",
+    MultiSelect = true,
+    OnActivate = function(tEntry, oComponent)
+        -- Open the selected file in your application's own editor or viewer.
+    end,
+});
+oBrowser.layout(10, 10, 760, 380);
+oBrowser.navigate("Core", true); -- Relative to the browser's directory.
+oBrowser.goBack(true);
+local tPaths = oBrowser.getSelected();
+```
+
+Options: `Directory` (current process directory by default), `Filter` (literal
+case-insensitive name substring), `Pattern` (semicolon-separated filename globs,
+default `*`), `ShowHidden` (false), `MultiSelect` (true), `Theme`/`Skin`, `Enabled`,
+`OnChange(directory, component)`, `OnSelect(paths, component)` and
+`OnActivate(entry, component)`. Relative navigation never changes the process
+working directory. Pattern globs support `*` and `?`; punctuation stays literal.
+Patterns apply to files; folders remain visible unless the name filter hides them.
+The name filter uses the already-read snapshot and debounces typing by 120 ms.
+
+`getDirectory()`/`getValue()` return the normalized absolute current directory
+with a trailing separator. `navigate(path, notify)`/`setValue(path, notify)`,
+`goBack(notify)`, `goForward(notify)`, `goUp(notify)` and `reload(notify)` return
+success booleans. `canGoBack()` and `canGoForward()` report history availability.
+History is bounded to 128 entries per direction. Back/forward restore surviving
+selected paths and reveal the saved top-row anchor. A fresh navigation clears
+forward history; refresh/same-path navigation does not create history steps.
+Failed reads retain the current directory, rows, selection and both history
+stacks, restore the actual address, and show the reason inline. `getError()`
+returns an independent `{Path, Reason}` snapshot or nil after a successful read.
+
+Object-state capture restores the browser as one model: directory, filters,
+hidden-entry/multiselection policies, numeric sort, selection, bounded history,
+top-row anchor and enabled flag. Private editors/table rows are derived from that
+model rather than restored a second time. `getBrowserState()` returns the detached
+record and `setBrowserState(record)` restores it silently after validating the
+record and reading the destination. Failed reads preserve the current view;
+selected paths that no longer exist or are filtered out are dropped.
+
+`getEntries()` returns independent entry snapshots in displayed order;
+`getEntries(true)` returns the complete unfiltered directory snapshot. Entries
+contain `Name`, `Path`, `Directory`, `Type`, and available `Size`, `Modified`
+(timestamp), `ModifiedText` metadata. Unknown metadata stays nil. Folder paths
+retain a trailing separator. `getSelected()` returns an independent array of
+selected absolute paths. `setSelected(paths, notify)` validates the full selection
+before mutation. Refresh, filtering and removal retain only visible surviving
+paths. Sorting does not change selected membership.
+
+Other methods: `getFilter/setFilter`, `getPattern/setPattern`,
+`isShowHiddenEnabled/setShowHiddenEnabled`,
+`isMultiSelectEnabled/setMultiSelectEnabled`, `getSort()` and
+`sortBy(column, direction, notify)`. Sort columns are `Name`, `Type`, `Size`,
+`Modified`; directions are `ascending`/`descending`. Size and time sort numerically;
+folders stay first in both directions, unknown metadata sorts last, and equal
+values use names as deterministic tie-breakers. Native header clicks toggle the
+same sorter. Directory/name sorting is case-insensitive. The status line displays
+the sort direction, result count and selected count.
+
+Double-click/Enter activates a row: folders navigate, files emit
+`fileActivated`/`OnActivate`. `activate(path, notify)` provides the same action
+programmatically and revalidates existence. F5 reloads; Alt-left/right/up navigate
+back/forward/parent while editing/list input remains native. `Enabled = false`
+disables child interaction. Existing themed controls supply appearance; no new
+skin PNGs are required. `BrowserList`, `DirectoryField`, `FilterField`, navigation
+buttons, `HiddenCheckbox` and `StatusLabel` expose the composed child controls.
+
+Notifications default to silent unless `notify` is true. Browser events include
+`directoryChanged` (Path, OldPath), `selectionChanged` (Selected, OldSelected),
+`fileActivated` (Entry, Path), `entriesChanged` (Directory, Count, Total),
+`filterChanged`, `sortChanged` (Sort, OldSort), `showHiddenChanged`, and
+`multiSelectChanged`, alongside shared events and `valueChanged`.
+`navigationFailed` always reports failed reads/activation, even for silent calls.
+The test executable exposes it under Resources → Project files.
+`Win/Tests/RunEventHooks.ps1` includes `FileBrowserRegression.lua`.
+
+## Image viewer
+
+`Controls.imageViewer(parent, options)` provides fit-to-window, centered 1:1,
+cursor-anchored wheel zoom, drag-to-pan, rectangular pixel selection and original
+source RGBA inspection. `Value` is an image path or nil; failed loads preserve
+the existing image, view and selection. Each viewer owns its decoded source and
+one display bitmap cropped to the viewport before scaling. Painting uses ordinary
+DC operations. Large zooms never allocate a full enlarged source bitmap.
+
+```lua
+local oViewer = Controls.imageViewer(oParent, {Value = pImage, Tool = "pan"});
+oViewer.layout(10, 10, 640, 400);
+oViewer.fit();
+oViewer.actualSize();
+oViewer.setZoom(4, true, 320, 200); -- Anchor in client coordinates.
+oViewer.setSelection({X = 10, Y = 20, Width = 30, Height = 40}, true);
+local tPixel = oViewer.getPixel(10, 20); -- X, Y, Red, Green, Blue, Alpha.
+```
+
+Left drag uses `Tool = "pan"` (default) or `"select"`; Shift-left drag selects
+regardless of tool, and middle drag always pans. Wheel zooms at the cursor.
+Handled wheel zoom focuses the viewer so its keyboard bindings work immediately
+after zooming without requiring an extra click. Otherwise click the viewer before
+using its shortcuts; other controls retain their own keyboard input.
+F fits, 1 centers at 1:1, +/- zoom at the viewport center, and Escape cancels a
+selection preview or clears a committed selection. Disabled viewers ignore
+interaction. Pan keeps image edges within the viewport and centers smaller axes.
+
+`PanEnabled`, `ZoomEnabled` and `SelectionEnabled` independently control user
+interaction and default to true. Each has `get<Property>()`, `is<Property>()` and
+`set<Property>(boolean, notify)` methods, for example `isPanEnabled()` and
+`setPanEnabled(false)`. Pan applies to all bound drag buttons; zoom applies to
+wheel, zoom keys, Fit and 1:1 shortcuts. Selection applies to selection drags and
+keyboard clearing. Disabling an active pan/selection cancels its gesture and
+releases capture, retaining committed data. Programmatic `setPan`, `setZoom`,
+`fit`, `actualSize` and `setSelection` remain available. Pixel inspection remains
+available independently of these flags.
+
+`getBindings()` returns an independent complete action map; `getBinding(action)`
+returns one action's binding array. `setBindings(map, notify)` atomically replaces
+the complete map (omitted actions become unbound), while
+`setBinding(action, array, notify)` replaces only one action. Use `{}` to unbind.
+`getDefaultBindings()` returns an independent default map and
+`resetBindings(notify)` restores it. Binding changes cancel active drags.
+
+Actions are `Pan`, `Select`, `ZoomIn`, `ZoomOut`, `Fit`, `ActualSize` and `Cancel`.
+Pan/Select accept drag descriptors; zoom actions accept key or wheel descriptors;
+the remaining actions accept keys. Descriptor forms are:
+
+```lua
+{Type = "drag", Button = "right"}            -- left, middle or right.
+{Type = "key", Key = wx.WXK_HOME}             -- A positive wx key code.
+{Type = "wheel", Direction = 1}               -- 1 up, -1 down.
+```
+
+Descriptors may include exact `Shift`, `Command` (Ctrl/Meta) and `Alt` booleans,
+defaulting false. Drag bindings may additionally restrict `Tool` to pan/select;
+omitting it makes the binding independent of the selected tool. Invalid fields,
+incompatible action types and overlapping inputs are rejected before mutation.
+Interaction flags still apply after rebinding.
+
+```lua
+oViewer.setBinding("Pan", {{Type = "drag", Button = "right"}}, true);
+oViewer.setBinding("Fit", {{Type = "key", Key = wx.WXK_HOME}}, true);
+local tCurrent = oViewer.getBindings();
+oViewer.setBinding("ZoomOut", {}); -- Unbind zoom-out inputs only.
+oViewer.resetBindings();
+```
+
+Methods include `getValue/setValue`, `getImageSize`, `getZoom/setZoom`,
+`getView` (Mode, Zoom, PanX, PanY), `setPan(x, y, notify)`, `fit(notify)`,
+`actualSize(notify)`, `getTool/setTool`, `getSelection/setSelection`,
+`clientToImage(x, y)` (fractional X, Y, inside), `imageToClient(x, y)`, and
+`getPixel(x, y)`. Source coordinates are zero-based. Selections use positive
+integer Width/Height, must lie within the source, and can be cleared with nil.
+Drag selection includes both endpoint pixels. Getters return independent data.
+Manual zoom ranges from 0.000001 to 64; fit enlarges up to 64x.
+
+Object-state capture preserves the source path, fit/manual view, pan, selection,
+tool, bindings and interaction/enabled flags. `getViewerState()` returns the same
+detached viewer record; `setViewerState(record)` validates and restores it silently.
+An invalid selection or unreadable replacement source leaves the current source
+and view unchanged. Fit recalculates at the target control's size; manual pan is
+clamped to that viewport. Pixels are loaded from the saved path, never embedded
+in state data. Drawing into an offscreen DC at another size does not change the
+live viewport, pan, zoom or pointer coordinate mapping.
+
+Setters default to silent. Extra events are `viewChanged` (View, OldView),
+`selectionChanged` (Selection, OldSelection), `pixelHovered` (Pixel or nil when
+leaving the image), `toolChanged` (Tool, OldTool), `interactionChanged`
+(Property, Value, OldValue), and `bindingsChanged` (Bindings, OldBindings), alongside shared events,
+`valueChanged` and `imageLoaded`. `setValue(path, true)` also invokes OnChange.
+Hover reports original source bytes, including alpha, rather than resampled
+screen colors. Transparent mask pixels report alpha zero.
+
+The viewer reuses the existing `Chart` artwork family: `Plot Normal/Disabled`
+for its background color and `Axis Selected` for its selection outline. Override
+`Artwork` with a skin family supplying those materials; no new PNGs are required
+by the bundled skin. Application image pixels are unchanged by appearance changes.
+The test executable exposes the viewer under Resources → Release artwork and
+review, with Fit, 1:1, a selection toggle, independent interaction checkboxes,
+default/alternate binding presets and pixel/selection readouts.
+`Win/Tests/RunEventHooks.ps1` includes `ImageViewerRegression.lua`.
+
 ## Editors and dialogs
 
 All factories return independent actual/decoy objects, accept their own `Skin`,
@@ -1154,6 +1456,10 @@ read-only off. `TextControl` exposes native caret, selection, clipboard and edit
   magnitudes must remain below 2^52. Step must be at least one decimal unit.
 - `getStep()` / `setStep(step, bNotify)` change the increment without snapping
   the current value. Each resulting value rounds to Precision.
+- `getNumericSettings()` returns Min, Max, Precision, Step;
+  `setNumericSettings(min, max, precision, step)` validates and applies them
+  together silently. Object-state restoration uses this to avoid invalid
+  intermediate configurations.
 - `isReadOnly()` / `setReadOnly(boolean, bNotify)` control user editing and
   stepping. Programmatic updates still work. `StepButtons=false` omits arrows.
 
@@ -1350,6 +1656,13 @@ opaque white. The swatch shows alpha over skin-defined checker colors.
 - `getSwatches()` / `setSwatches(array, bNotify)` copy up to ten RGBA swatches.
   Defaults are eight common colors, including transparent black. These are
   selectable data values, not decorative skin colors.
+- `Layout = "sliders"` (default), `"square"`, or `"wheel"` selects the editor
+  arrangement. `getLayout()` / `setLayout(name, bNotify)` switch it at runtime
+  without applying or discarding the preview. Object state includes the layout.
+- Square mode uses a saturation/value square, a vertical hue bar and a vertical
+  alpha bar. Wheel mode uses a hue/saturation wheel, a vertical value bar and a
+  vertical alpha bar. Alpha is opaque at the top and transparent at the bottom;
+  checker colors and surrounding chrome follow the selected skin or System theme.
 - `open()` returns whether the popup opened. It refuses disabled, hidden or
   already-open controls. `isOpen()` reports editor state.
 - `getPreview()` returns an independent preview while open, otherwise committed
@@ -1365,12 +1678,22 @@ outside native deactivation, owner hiding or native popup hiding cancels.
 A new opening starts from committed color. Authoritative setValue updates also
 replace an open preview.
 
+In square/wheel mode, Tab and Shift+Tab cycle the color surface, hue/value bar,
+and alpha bar. On the square, Left/Right change saturation and Up/Down change
+value. On the wheel, Left/Right change hue and Up/Down change saturation. Bar
+arrows adjust their channel; Page Up/Down move ten units and Home/End select its
+limits. The existing Apply/Cancel and swatch behavior is shared by all layouts.
+In `Win/test.exe` (Task Desk), Settings starts with a Color pickers section
+containing a project color square, an accent hue wheel and a layout selector.
+The separate gallery also includes them under Properties & color.
+
 The popup is 360×360 client pixels. Containment shifts only overflowing position
 axes, preserving its size and contents. Oversized behavior inherits the existing
 `hide` default or explicit `allow` policy. Ordinary owner layout is unaffected.
 
 Events: `opened`, `closed` (Committed flag), `previewChanged` (Value), `committed`
-(Value), `cancelled` (Value), `swatchesChanged` (Swatches), standard `valueChanged`
+(Value), `cancelled` (Value), `swatchesChanged` (Swatches), `layoutChanged`
+(Layout/OldLayout), standard `valueChanged`
 (Value/OldValue), and generic pointer/button/right-click/key/focus/lifecycle events.
 `OnChange(color, component)` runs for committed changes when notification is enabled.
 
@@ -1622,17 +1945,26 @@ Run the native regressions and syntax checks from the project root:
 .\Win\Tests\RunEventHooks.ps1
 ```
 
-The runner loads the packaged Lua/wx runtime, executes EventHooksRegression,
-InspectorRegression, DemoGalleryRegression, StateRegression and AdditionalControlsRegression, and syntax-loads every Lua source. Inspector coverage
+The default runner loads the packaged Lua/wx runtime, executes 35 component,
+state, layout, rendering and lifecycle regression suites, and syntax-loads every
+Lua source. It does not open the showcase or write preview images. Inspector coverage
 includes actual timer delivery, native text events, combo commit/cancel,
 filesystem browsing/validation/cancel, menu descriptors, typed property binding,
 disclosure state, disabled input, artwork states and repeat-safe disposal.
-Gallery coverage checks category membership, per-type documentation and native
+Use `.\Win\Tests\RunEventHooks.ps1 -Showcase` only when an interactive showcase
+run is wanted. Gallery coverage checks category membership, per-type documentation and native
 parenting, nonoverlapping bounds at normal/minimum/wide sizes, scroll reachability,
 browse/suggestion/menu popups, nested tab actions, enabled-state policy and audio.
 State coverage includes 6,000 child tiers, partial reconstruction with a missing
 4,500-node tail, stable-ID matching, missing grid rows/tree nodes, type replacement,
-custom adapters, rollback, and a complete gallery state round trip without LuaEx.
+custom adapters and rollback without LuaEx. The complete gallery state round trip
+requires `-Showcase`.
+
+`ObjectRegression.lua` and `RedrawRegression.lua` are historical before/after
+benchmarks, excluded from the current runner because their `Win/Backups` baseline
+trees are absent from this checkout. Their earlier results below are historical,
+not results from the current run. Current behavior and rendering checks run
+against the installed framework. Completed audit fixes are listed in `BUGFIX.md`.
 
 ## Additional editors and workspace controls
 
@@ -1645,7 +1977,7 @@ control. LuaEx is not required or loaded.
 | Factory | Creation options beyond Skin | State and interaction |
 | --- | --- | --- |
 | `multilineText` | `Value`, `ReadOnly = false`, `Wrap = true`, `Hint` | Text includes newlines. Enter inserts a newline; native clipboard, selection, undo and scroll work normally. `isReadOnly()` / `setReadOnly(flag, notify)` control editing. Wrap is fixed at creation. |
-| `rangeSlider` | `Min = 0`, `Max = 100`, `Step = 1`, `Value = {Low, High}` | Ordered endpoint copies from `getValue()`. Setters validate, clamp and snap. Handles never cross. Space chooses the keyboard handle; arrows/Page/Home/End move it. Escape cancels an active drag. `get/setRange`, `get/setStep` are available. |
+| `rangeSlider` | `Min = 0`, `Max = 100`, `Step = 1`, `Value = {Low, High}` | Ordered endpoint copies from `getValue()`. Setters validate, clamp and snap. Handles never cross. Space chooses the keyboard handle; arrows/Page/Home/End move it. Escape cancels an active drag. `get/setRange`, `get/setStep` are available. `getRangeAndStep()` returns Min, Max, Step; `setRangeAndStep(min, max, step)` applies compatible settings together silently for state restoration. |
 | `notification` | `Value`, `Severity = 'info'`, `Duration = 3000` | `show(text, severity, milliseconds)` reuses the same inline control and restarts one timer. Zero duration persists. `dismiss(reason)` and close/Escape hide it. `dismissed` reports timeout/close/keyboard/application. Value, severity and duration have get/set APIs; visibility/timer progress are transient. |
 | `dateTimePicker` | `Mode = 'date'`, `Value`, optional ISO `Min`/`Max`, `ReadOnly` | Date is `YYYY-MM-DD`, time is 24-hour `HH:MM`, datetime is `YYYY-MM-DD HH:MM`. Enter/focus loss commits valid text; invalid text restores the last accepted value and emits `invalidInput`. F4/icon opens a skinned calendar/time popup; Escape closes or restores an edit. `get/setRange`, `is/setReadOnly`, `open`, `close`, `isOpen` are available. Mode is fixed at creation. |
 | `breadcrumb` | `Items = {{Id, Text, Image?}, ...}`, optional `Value` | Selects an existing stable ID, with independent `getItems()` / `getPath()` copies. Choosing an ancestor retains deeper path definitions. Arrows/Home/End navigate; a narrow bar reveals the selection and offers a leading back action. Missing saved selection IDs are skipped on restore. |
@@ -1667,6 +1999,17 @@ wxLuma's value/notification conventions:
 - `MotionDirection` is `1` for ascending and `-1` for descending; descending is
   valid only in alternate mode. Snapshots preserve bounds, rate, continuity,
   direction and value. Numeric input and representable periods must be finite.
+- `OnChange(value, component)` / `on("valueChanged", listener)` report continuous
+  effective value changes. `OnChangeComplete(value, component)` /
+  `on("changeComplete", listener)` report one finished user gesture: drag release
+  (including outside the dial), the last held adjustment-key release, or 200 ms
+  without wheel input. Event data includes `Value`, starting `OldValue`, and
+  `Input` (`"pointer"`, `"keyboard"`, `"wheel"`). Moving away and back still completes.
+  No-change input, Escape, capture/focus loss, disabling, disposal, programmatic
+  value changes and switching input devices do not complete the cancelled gesture.
+  Escape retains drag rollback; other cancellation paths retain the current value.
+  In Task Desk, Resources → Build controls shows completion beneath the worker dial
+  and records it in the activity log.
 
 ```lua
 local oDial = Controls.knob(oParent, {

@@ -310,7 +310,7 @@ local function run()
     check(tChildInsets[2] > tRootInsets[2] and tChildInsets[1] == nil and tChildInsets[3] == nil,
         "Only hierarchy column content is indented.");
     -- Node images follow hierarchy indentation independently of image columns.
-    local pNodeFixture = APP_PATH.."/Tests/TreeExNodeImageFixture.png";
+    local pNodeFixture = os.tmpname();
     local oSolid = _wx.wxImage(20, 20);
     oSolid:SetRGB(_wx.wxRect(0, 0, 20, 20), 239, 23, 61);
     check(oSolid:SaveFile(pNodeFixture, _wx.wxBITMAP_TYPE_PNG), "Save inline node-image fixture.");
@@ -383,7 +383,9 @@ local function run()
     oDC:SetDeviceOrigin(0, 0);
     oDC:SelectObject(_wx.wxNullBitmap);
     local oImage = oBitmap:ConvertToImage();
-    check(oImage:SaveFile(APP_PATH.."/Tests/CheckTreeExPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save production check/tree preview.");
+    if (arg[2] == "--showcase") then
+        check(oImage:SaveFile(APP_PATH.."/Tests/CheckTreeExPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save production check/tree preview.");
+    end
     oImage:delete();
     oDC:delete();
     oBitmap:delete();
@@ -395,6 +397,8 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Gallery.show("CheckTreeToggle", true);
     tWorkbench.Layout();

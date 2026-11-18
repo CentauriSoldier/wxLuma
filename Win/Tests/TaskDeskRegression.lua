@@ -70,8 +70,84 @@ function TaskDeskRegression.run()
         oApp.Pages.Objects.Capacity.setValue(42, true);
         fCheck(oApp.Pages.Settings.Capacity == 42 and oApp.Pages.Objects.Workers.getValue() == 42
             and oApp.Pages.Objects.Storage.getValue() == 42, "Capacity controls operate the resource dashboard together.");
+        local oWorkers = oApp.Pages.Objects.Workers;
+        oWorkers.handleKey("down", _wx.WXK_RIGHT);
+        oWorkers.handleKey("up", _wx.WXK_RIGHT);
+        fCheck(oApp.Pages.Objects.WorkersComplete.getValue():find("Worker allocation complete:", 1, true) ~= nil,
+            "The shipped resource page displays actual knob completion.");
+        local oProjectColor, oAccentColor = oApp.Pages.Objects.ProjectColor, oApp.Pages.Objects.AccentColor;
+        fCheck(oProjectColor.getLayout() == "square" and oAccentColor.getLayout() == "wheel"
+            and oApp.Tabs.Pages[5]:IsDescendant(oProjectColor.Control)
+            and oApp.Tabs.Pages[5]:IsDescendant(oAccentColor.Control),
+            "Both new color layouts are reachable in the shipped Settings tab.");
+        oApp.Pages.Objects.ColorLayout.setValue(3, true);
+        fCheck(oProjectColor.getLayout() == "wheel", "Task Desk's layout selector controls the actual project picker.");
+        oApp.Pages.Objects.ColorLayout.setValue(1, true);
+        fCheck(oProjectColor.getLayout() == "sliders", "Task Desk can select the original slider layout.");
+        oApp.Pages.Objects.ColorLayout.setValue(2, true);
+        oProjectColor.setValue({R = 25, G = 140, B = 220, A = 95}, true);
+        fCheck(oApp.Pages.Settings.Color.A == 95 and oApp.Pages.Objects.ColorStatus.getValue():find("Project color:", 1, true),
+            "Project color editing updates actual settings and its status readout.");
+        oApp.Pages.Objects.ProgressDirection.setValue(2, true);
+        for _, sMeter in ipairs({"Package", "Processor", "Storage", "Memory"}) do
+            fCheck(oApp.Pages.Objects[sMeter].getFillDirection() == 1, "The working app uses unified numeric direction: "..sMeter);
+        end
+        oApp.Pages.Objects.ProgressReserve.setValue(4, true);
+        for _, sMeter in ipairs({"Package", "Processor", "Storage", "Memory"}) do
+            local oMeter = oApp.Pages.Objects[sMeter];
+            fCheck(oMeter.getValue() == 0 and oMeter.getReserved() == 100, "Unified fully reserved app meter clamps to empty: "..sMeter);
+        end
+        oApp.Pages.Objects.ProgressReserve.setValue(1, true);
+        oApp.Pages.Objects.ProgressDirection.setValue(1, true);
+        local tObjects = oApp.Pages.Objects;
+        for mode = 0, 2 do
+            fCheck(tObjects["Polygon"..mode].getShape() == 2 and tObjects["Polygon"..mode].getFillMode() == mode,
+                "The shipped resource page contains every polygon fill mode.");
+        end
+        tObjects.PolygonReserveDirection.setValue(3, true);
+        fCheck(tObjects.Polygon1.getReserveDirection() == "inward" and tObjects.Polygon2.getReserveDirection() == "CCW",
+            "Polygon reserve direction can oppose the fill in the working app.");
+        tObjects.PolygonReserveDirection.setValue(1, true);
+        fCheck(tObjects.Polygon1.getReserveDirection() == nil, "The polygon demo restores automatic reserve direction.");
+        tObjects.PolygonVertices.setValue(2, true);
+        fCheck(#tObjects.Polygon1.getPolygon() == 6, "The test app can select a concave polygon.");
+        tObjects.PolygonRadii.setValue(2, true);
+        fCheck(tObjects.Polygon1.getRadii() == 25 and select(2, tObjects.Polygon1.getRadii()) == 90,
+            "The test app exercises polygon radial bands.");
+        tObjects.PolygonStartAngle.setValue(6, true); tObjects.PolygonReserveAngle.setValue(3, true);
+        fCheck(tObjects.Polygon2.getStartAngle() == 359 and tObjects.Polygon2.getReserveStartAngle() == 45,
+            "Polygon fill and reserve arc angles are independently selectable.");
         oApp.Pages.Objects.Properties.setValue("version", "1.1", true);
         fCheck(oApp.Pages.Settings.version == "1.1", "Project inspector edits actual settings.");
+        local oFiles = oApp.Pages.Objects.ProjectFiles;
+        fCheck(oFiles.Kind == "FileBrowser" and #oFiles.getEntries() > 0, "Resources embeds a populated project file browser.");
+        local sProjectDirectory = oFiles.getDirectory();
+        fCheck(oFiles.navigate("Core") and oFiles.goBack() and oFiles.getDirectory() == sProjectDirectory,
+            "Project browser navigation works in the scrollable application page.");
+        oFiles.setFilter("init.lua");
+        fCheck(#oFiles.getEntries() == 1 and oFiles.getEntries()[1].Name == "init.lua", "Project browser filters actual framework files.");
+        oFiles.setFilter("");
+        local oArtwork = oApp.Pages.Objects.Artwork;
+        fCheck(oArtwork.Kind == "ImageViewer", "Release artwork uses the interactive image viewer.");
+        fClick(oApp.Pages.Objects.ArtworkActual);
+        fCheck(oArtwork.getZoom() == 1 and oArtwork.getView().Mode == "manual", "Artwork 1:1 action centers the source at actual size.");
+        oApp.Pages.Objects.ArtworkSelect.setValue(true, true);
+        fCheck(oArtwork.getTool() == "select", "Artwork selection toggle changes the viewer tool.");
+        fClick(oApp.Pages.Objects.ArtworkFit);
+        fCheck(oArtwork.getView().Mode == "fit", "Artwork Fit action restores responsive fitting.");
+        oApp.Pages.Objects.ArtworkPanEnabled.setValue(false, true);
+        oApp.Pages.Objects.ArtworkZoomEnabled.setValue(false, true);
+        oApp.Pages.Objects.ArtworkSelectionEnabled.setValue(false, true);
+        fCheck(not oArtwork.isPanEnabled() and not oArtwork.isZoomEnabled() and not oArtwork.isSelectionEnabled(),
+            "Artwork permission toggles control all three interactions independently.");
+        oApp.Pages.Objects.ArtworkBindingPreset.setValue(2, true);
+        fCheck(oArtwork.getBinding("Pan")[1].Button == "right" and oArtwork.getBinding("Fit")[1].Key == _wx.WXK_HOME,
+            "Alternate artwork preset changes actual bindings.");
+        oApp.Pages.Objects.ArtworkBindingPreset.setValue(1, true);
+        fCheck(oArtwork.getBinding("Pan")[1].Button == "left", "Default artwork preset restores the built-in bindings.");
+        oApp.Pages.Objects.ArtworkPanEnabled.setValue(true, true);
+        oApp.Pages.Objects.ArtworkZoomEnabled.setValue(true, true);
+        oApp.Pages.Objects.ArtworkSelectionEnabled.setValue(true, true);
         for _, sSkin in ipairs({"Obsidian", "System"}) do
             oApp.SetSkin(sSkin);
             for nPage = 1, 5 do oApp.Tabs.setValue(nPage); oApp.Pages.refresh(); end

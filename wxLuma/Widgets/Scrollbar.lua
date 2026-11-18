@@ -4,6 +4,17 @@ local Scrollbar     = {};
 local createSurface = require("wxLuma.Core.ControlSurface").create;
 local drawFrame     = require("wxLuma.Core.ControlDrawing").frame;
 local finite        = require("wxLuma.Core.ControlNumeric").finite;
+local advance       = require("wxLuma.Core.ControlNumeric").advance;
+
+--[[!
+@fqxn wxLuma.UI.Scrollbar.validateRange
+@desc Validates integer scroll geometry and rejects overflowing spans before mutation or native allocation.
+!]]
+local function validateRange(nMin, nMax, nPage)
+    assert(finite(nMin) and finite(nMax) and finite(nPage) and nMax >= nMin and nPage > 0
+        and finite(nMax - nMin) and nMin % 1 == 0 and nMax % 1 == 0 and nPage % 1 == 0,
+        "Invalid scrollbar range/page.");
+end
 
 --[[!
 @fqxn wxLuma.UI.Scrollbar.create
@@ -14,13 +25,15 @@ local finite        = require("wxLuma.Core.ControlNumeric").finite;
 !]]
 function Scrollbar.create(oParent, tOptions)
     tOptions = _Theme.options(tOptions, oParent);
+    local nStep = tOptions.Step == nil and 1 or tOptions.Step;
+    validateRange(tOptions.Min, tOptions.Max, tOptions.Page);
+    assert(finite(nStep) and nStep > 0 and nStep % 1 == 0, "Scrollbar Step must be a positive integer.");
+    assert(finite(tOptions.Value), "Scrollbar value must be finite.");
     local oComponent = createSurface(oParent, tOptions, "Scrollbar");
     oComponent.PointerRefresh      = true;
     oComponent.PointerStateRefresh = true;
     oComponent.Vertical            = tOptions.Vertical ~= false;
-    oComponent.Step                = tOptions.Step or 1;
-    assert(finite(oComponent.Step) and oComponent.Step > 0 and oComponent.Step % 1 == 0,
-        "Scrollbar Step must be a positive integer.");
+    oComponent.Step                = nStep;
 
     --[[!
     @fqxn wxLuma.UI.Scrollbar.setValue
@@ -76,8 +89,7 @@ function Scrollbar.create(oParent, tOptions)
     @ret table oComponent This public component object.
     !]]
     function oComponent.setRange(nMin, nMax, nPage)
-        assert(finite(nMin) and finite(nMax) and finite(nPage) and nMax >= nMin and nPage > 0
-            and nMin % 1 == 0 and nMax % 1 == 0 and nPage % 1 == 0, "Invalid scrollbar range/page.");
+        validateRange(nMin, nMax, nPage);
         oComponent.Min, oComponent.Max, oComponent.Page = nMin, nMax, nPage;
         oComponent.setValue(oComponent.Value or nMin);
         oComponent.refresh();
@@ -93,11 +105,15 @@ function Scrollbar.create(oParent, tOptions)
         local nWidth, nHeight = oComponent.Control:GetClientSizeWH();
         local nLength         = oComponent.Vertical and nHeight or nWidth;
         local nTrack          = math.max(1, nLength - 36);
+        local nSpan = oComponent.Max - oComponent.Min;
+        local nScale = math.max(nSpan, oComponent.Page);
+        -- Normalize before summing or multiplying large finite range values.
+        local nRatio = (oComponent.Page / nScale) / (nSpan / nScale + oComponent.Page / nScale);
         local nThumb          = math.min(nTrack, math.max(18,
-            math.floor(nTrack * oComponent.Page / (oComponent.Max - oComponent.Min + oComponent.Page))));
+            math.floor(nTrack * nRatio)));
         local nTravel         = nTrack - nThumb;
         return 18 + (oComponent.Max == oComponent.Min and 0
-            or math.floor(nTravel * (oComponent.Value - oComponent.Min) / (oComponent.Max - oComponent.Min))), nThumb, nTravel;
+            or math.floor(nTravel * ((oComponent.Value - oComponent.Min) / nSpan))), nThumb, nTravel;
     end
     local nDrag, nHoverPart, nPressedPart, nPointerAt;
 
@@ -113,17 +129,18 @@ function Scrollbar.create(oParent, tOptions)
         if (sEvent == "down" and oComponent.Hover) then
             nDrag = nil;
             if (nAt < 18) then
-                oComponent.setValue(oComponent.Value - oComponent.Step, true);
+                oComponent.setValue(advance(oComponent.Value, oComponent.Min, oComponent.Max, oComponent.Step, -1), true);
             elseif (nAt >= nLength - 18) then
-                oComponent.setValue(oComponent.Value + oComponent.Step, true);
+                oComponent.setValue(advance(oComponent.Value, oComponent.Min, oComponent.Max, oComponent.Step, 1), true);
             elseif (nAt >= nStart and nAt < nStart + nThumb) then
                 nDrag = nAt - nStart;
             else
-                oComponent.setValue(oComponent.Value + (nAt < nStart and -oComponent.Page
-                    or oComponent.Page), true);
+                oComponent.setValue(advance(oComponent.Value, oComponent.Min, oComponent.Max, oComponent.Page,
+                    nAt < nStart and -1 or 1), true);
             end
         elseif ((sEvent == "move" or sEvent == "up") and oComponent.Pressed and nDrag and nTravel > 0) then
-            oComponent.setValue(oComponent.Min + (nAt - 18 - nDrag) / nTravel * (oComponent.Max - oComponent.Min), true);
+            local nFraction = math.max(0, math.min(1, (nAt - 18 - nDrag) / nTravel));
+            oComponent.setValue(oComponent.Min + nFraction * (oComponent.Max - oComponent.Min), true);
         end
         if (sEvent == "up" or sEvent == "cancel" or not oComponent.Pressed) then
             nDrag, nPressedPart = nil, nil;
@@ -141,7 +158,8 @@ function Scrollbar.create(oParent, tOptions)
             [_wx.WXK_PAGEDOWN] = oComponent.Page
         };
         if (tDelta[nKey]) then
-            oComponent.setValue(oComponent.Value + tDelta[nKey], true);
+            local nDelta = tDelta[nKey];
+            oComponent.setValue(advance(oComponent.Value, oComponent.Min, oComponent.Max, math.abs(nDelta), nDelta > 0 and 1 or -1), true);
         elseif (nKey == _wx.WXK_HOME) then
             oComponent.setValue(oComponent.Min, true);
         elseif (nKey == _wx.WXK_END) then
@@ -154,7 +172,7 @@ function Scrollbar.create(oParent, tOptions)
 
     -- Apply wheel movement to the value or scroll offset.
     oComponent.wheel = function(nSteps)
-        oComponent.setValue(oComponent.Value - nSteps * oComponent.Step * 3, true);
+        oComponent.setValue(advance(oComponent.Value, oComponent.Min, oComponent.Max, oComponent.Step, -nSteps * 3), true);
     end;
 
     --[[!

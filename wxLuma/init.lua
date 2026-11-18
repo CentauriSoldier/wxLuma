@@ -88,6 +88,8 @@ local function load(pConfig)
         Config   = Config,
         State    = require("wxLuma.State"),
         Theme    = Theme,
+        Progress = {Shape = require("wxLuma.Progress").Shape, Fill = require("wxLuma.Progress").Fill,
+            Direction = require("wxLuma.Progress").Direction, create = Controls.progress},
     };
 
     return wxLuma;

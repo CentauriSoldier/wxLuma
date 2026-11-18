@@ -222,9 +222,7 @@ local function run()
 
     -- A known solid-color source distinguishes letterboxing from cover/stretch
     -- and native centering through actual RGB pixels, rather than mode names.
-    local pFixture = APP_PATH.."/Tests/DisplayContainers-pixel-fixture.png";
-    local hExisting = io.open(pFixture, "rb");
-    assert(not hExisting, "Refusing to overwrite an existing pixel fixture.");
+    local pFixture = os.tmpname();
     local oSolid = _wx.wxImage(40, 20);
     oSolid:SetRGB(_wx.wxRect(0, 0, 40, 20), 240, 30, 20);
     check(oSolid:SaveFile(pFixture, _wx.wxBITMAP_TYPE_PNG), "Write temporary pixel fixture.");
@@ -337,6 +335,8 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     _wx.wxYield();
     local oGallery = tWorkbench.Gallery;

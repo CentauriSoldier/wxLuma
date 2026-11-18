@@ -10,6 +10,7 @@ local _wx = require("wx");
 local _Luma = require("wxLuma")();
 local _Object = require("wxLuma.Core.ControlObject");
 local _nChecks = 0;
+local _bHeadless = arg and arg[2] == "--headless";
 
 --[[!
 @fqxn wxLuma.Tests.StateRegression.check
@@ -160,19 +161,46 @@ local function run()
     check(oTabs.getValue() == 1, "Tabs restore selection by stable ID rather than its old index.");
     check(oTree.getValue() == "keep" and oTree.getNode("keep").Expanded, "Missing tree selection is skipped while existing expansion restores.");
 
+    -- Reconstructed composites have different native/private child identities.
+    -- Their model adapters must not depend on matching those private IDs.
+    local pViewerImage = _Luma.Config.ImagePath.."/Menu/Command Shield.png";
+    local oSavedViewer = fWidget("imageViewer", oSource, "image inspection", {Value = pViewerImage});
+    oSavedViewer.layout(0, 0, 160, 100); oSavedViewer.setZoom(4); oSavedViewer.setPan(20, 10);
+    oSavedViewer.setSelection({X = 2, Y = 3, Width = 4, Height = 5}); oSavedViewer.setPanEnabled(false);
+    local oRestoredViewer = fWidget("imageViewer", oTarget, "image inspection");
+    oRestoredViewer.layout(0, 0, 160, 100);
+    oRestoredViewer.setObjectState(oSavedViewer.getObjectState());
+    check(oRestoredViewer.getValue() == pViewerImage and oRestoredViewer.getZoom() == 4
+        and oRestoredViewer.getView().PanX == 20 and oRestoredViewer.getSelection().Y == 3
+        and not oRestoredViewer.isPanEnabled(), "Viewer model restores into an existing reconstructed control.");
+    local oSavedBrowser = fWidget("fileBrowser", oSource, "file browsing", {Directory = _Luma.Path, Filter = "init.lua"});
+    local tInitEntry = oSavedBrowser.getEntries()[1];
+    oSavedBrowser.setSelected({tInitEntry.Path});
+    local oRestoredBrowser = fWidget("fileBrowser", oTarget, "file browsing", {Directory = _Luma.Path, Filter = "wxLumaConfig.lua"});
+    local tBrowserSnapshot = oSavedBrowser.getObjectState();
+    local _, tBrowserReport = oRestoredBrowser.setObjectState(tBrowserSnapshot);
+    check(#tBrowserSnapshot.Objects == 1 and tBrowserReport.Applied == 1 and tBrowserReport.Skipped == 0,
+        "Composite adapters omit private child identities from capture and matching.");
+    check(oRestoredBrowser.getFilter() == "init.lua" and oRestoredBrowser.FilterField.getValue() == "init.lua"
+        and oRestoredBrowser.getEntries()[1].Name == "init.lua" and oRestoredBrowser.getSelected()[1] == tInitEntry.Path,
+        "Browser model restores coherently into an existing reconstructed control.");
+
     for nIndex = #tOwned, 1, -1 do tOwned[nIndex].destroy(); end
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxGetApp():Yield();
 
-    -- Exercise the complete existing gallery, including compound controls.
-    local tDemo = assert(loadfile(APP_PATH.."/Tests/GalleryUI.lua"))()();
-    local tGallery = tDemo.Window.getObjectState();
-    local _, tGalleryReport = tDemo.Window.setObjectState(tGallery);
-    check(tGalleryReport.Applied == #tGallery.Objects and tGalleryReport.Skipped == 0,
-        "The complete existing gallery restores every captured component.");
-    tDemo.Frame:Close();
-    _wx.wxGetApp():Yield();
+    -- Headless runs omit the legacy gallery pass so automated model/state
+    -- checks do not open the showcase or perform a visual inspection.
+    if (not _bHeadless) then
+        local tDemo = assert(loadfile(APP_PATH.."/Tests/GalleryUI.lua"))()();
+        local tGallery = tDemo.Window.getObjectState();
+        local _, tGalleryReport = tDemo.Window.setObjectState(tGallery);
+        check(tGalleryReport.Applied == #tGallery.Objects and tGalleryReport.Skipped == 0,
+            "The complete existing gallery restores every captured component.");
+        tDemo.Frame:Close();
+        _wx.wxGetApp():Yield();
+    end
     check(package.loaded["LuaEx.load"] == nil, "Native state support never loads LuaEx.");
 end
 

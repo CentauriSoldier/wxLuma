@@ -249,6 +249,8 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     _wx.wxYield();
     local oWorkbenchTabs = tWorkbench.Widgets.Tabs;

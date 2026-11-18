@@ -51,7 +51,11 @@ function ControlEditor.create(oParent, tOptions, sKind)
         oComponent.refresh();
         if (bNotify) then
             tEvents.emit("valueChanged", {Value = sNext, OldValue = sOld});
+            -- Application callbacks may dispose or replace the editor value.
+            -- Never continue native hooks for a retired or superseded update.
+            if (oComponent.Disposed or sValue ~= sNext) then return; end
             if (oComponent.onTextChanged) then oComponent.onTextChanged(sNext); end
+            if (oComponent.Disposed) then return; end
             if (oComponent.OnChange) then oComponent.OnChange(sNext, oComponent); end
         end
     end
@@ -130,7 +134,7 @@ function ControlEditor.create(oParent, tOptions, sKind)
         if (sEvent == "up" and oComponent.Pressed and oComponent.Hover
             and oComponent.ActionIcon and nX >= nWidth - 34) then
             tEvents.emit("action");
-            if (oComponent.onAction) then oComponent.onAction(); end
+            if (not oComponent.Disposed and oComponent.onAction) then oComponent.onAction(); end
         elseif (sEvent == "down" and (not oComponent.ActionIcon or nX < nWidth - 34)) then
             oComponent.cancel();
             oText:SetFocus();
@@ -147,7 +151,7 @@ function ControlEditor.create(oParent, tOptions, sKind)
     oText:Connect(_wx.wxEVT_COMMAND_TEXT_ENTER, function()
         if (oComponent.isEnabled()) then
             tEvents.emit("submitted", {Value = oText:GetValue()});
-            if (oComponent.onTextEnter) then oComponent.onTextEnter(); end
+            if (not oComponent.Disposed and oComponent.onTextEnter) then oComponent.onTextEnter(); end
         end
     end);
     oText:Connect(_wx.wxEVT_KEY_DOWN, function(jEvent)

@@ -174,6 +174,31 @@ function NumericField.create(oParent, tOptions)
     end
 
     --[[!
+    @fqxn wxLuma.UI.NumericField.getNumericSettings
+    @desc Returns coupled numeric settings together for atomic persistence.
+    @ret number nMin Minimum, followed by maximum, precision and step.
+    !]]
+    function oComponent.getNumericSettings() return nMin, nMax, nPrecision, nStep; end
+
+    --[[!
+    @fqxn wxLuma.UI.NumericField.setNumericSettings
+    @desc Validates bounds, precision and step together before applying them silently
+        and normalizing the current value. Avoids invalid intermediate configurations.
+    @param number nLow New minimum.
+    @param number nHigh New maximum.
+    @param number nDigits Decimal precision.
+    @param number nIncrement Positive step.
+    @ret table oComponent This object.
+    !]]
+    function oComponent.setNumericSettings(nLow, nHigh, nDigits, nIncrement)
+        assert(not oComponent.Disposed, "Numeric field is disposed.");
+        fValidate(nLow, nHigh, nDigits, nIncrement);
+        nMin, nMax, nPrecision, nStep = nLow, nHigh, nDigits, nIncrement;
+        oComponent.setValue(oComponent.Value);
+        return oComponent;
+    end
+
+    --[[!
     @fqxn wxLuma.UI.NumericField.setRange
     @desc Atomically validates new bounds, then clamps the current value.
     @param number nLow Minimum.

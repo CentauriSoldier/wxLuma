@@ -215,7 +215,9 @@ function PropertyGrid.create(oParent, tOptions)
         local tSpec = tById[sId];
         if (tSpec.ReadOnly ~= bReadOnly) then
             tSpec.ReadOnly = bReadOnly;
-            tEditors[sId].setEnabled(oComponent.isEnabled() and not bReadOnly);
+            -- Read-only is a local editor policy. Temporary ancestor disabling
+            -- must neither erase it nor prevent a later editable state.
+            tEditors[sId].setEnabled(oComponent.Control:IsThisEnabled() and not bReadOnly);
             oScroll.Content:Refresh(false);
             tEvents.emit("readOnlyChanged", {Id = sId, ReadOnly = bReadOnly});
         end

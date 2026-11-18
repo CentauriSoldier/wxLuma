@@ -80,7 +80,7 @@ local tCatalog = {
         {Id = "Knob", Title = "Knobs and dials", Primary = {"Knob", "KnobWrap", "KnobBounce"}, Mode = "columns", Height = 180,
             Actions = {"KnobIncrease", "KnobDecrease"},
             Description = "Clamped, revolving and alternating modes follow LuaEx Potentiometer behavior without depending on LuaEx. Rotating needle images define shape, thickness, color and shading.",
-            Usage = "Left clamps, middle wraps inclusively, right bounces and reverses logical direction. Drag up/down, wheel, or use arrows/Page/Home/End. The actions advance all three by the same rate.",
+            Usage = "Left clamps, middle wraps, right bounces. Drag, wheel or use arrows/Page/Home/End; the status line reports continuous changes and a final Knob complete message. The actions advance all three programmatically.",
             API = "Controls.knob(parent, {Skin = skin, Min = 0, Max = 100, Rate = 5, Continuity = 'alternate'})"},
     }},
     {Id = "progress", Title = "Progress meters", Cards = {
@@ -234,9 +234,10 @@ local tCatalog = {
             Usage = "Edit a value to update the status line. Categories separate groups; Identifier demonstrates read-only binding.",
             API = "Controls.propertyGrid(parent, {Skin = skin, Properties = properties}); grid.setValue(id, value, true)"},
         {Id = "ColorPicker", Title = "Color pickers", Primary = {"ColorPicker", "ColorPickerAlpha"}, Height = 104,
-            Description = "RGBA variants compare color and transparency using the same RGB/HSV/alpha editor.",
-            Usage = "Open either swatch. Adjust channels with pointer/keyboard; Apply/Enter commits and Escape/outside click cancels. Checker artwork reveals alpha.",
-            API = "Controls.colorPicker(parent, {Skin = skin, Value = {R = 65, G = 140, B = 210, A = 190}})"},
+            Actions = {"ColorPickerLayout"},
+            Description = "The first picker starts with a color square; the second uses a hue wheel. Both include vertical transparency bars.",
+            Usage = "Choose the first picker's layout: sliders, square or wheel. Drag colors and alpha; Tab selects controls, arrows edit, Enter applies and Escape cancels.",
+            API = "Controls.colorPicker(parent, {Layout = 'square', Value = {R = 65, G = 140, B = 210, A = 190}}); picker.setLayout('wheel')"},
     }},
     {Id = "charts", Title = "Graphs & charts", Cards = {
         {Id = "LineChart", Title = "Line and area graphs", Primary = {"LineChart", "AreaChart"}, Mode = "columns", Height = 330,

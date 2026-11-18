@@ -164,14 +164,16 @@ function ControlInput.create(oParent, tOptions, sKind, fConfigure)
 
     --[[!
     @fqxn wxLuma.UI.ControlInput.setEnabled
-    @desc Cancels active input, changes native enabled state and refreshes the component.
+    @desc Cancels active input, changes this control's own enabled setting and
+        refreshes it. A disabled ancestor does not overwrite the local setting.
     @param boolean bFlag Whether input is enabled.
     @ret table oComponent This public component object.
     !]]
     function oComponent.setEnabled(bFlag)
         assert(type(bFlag) == "boolean", "Enabled flag must be boolean.");
         local sOldState = oComponent.getState();
-        local bChanged  = oControl:IsEnabled() ~= bFlag;
+        -- Preserve local policy separately from inherited availability.
+        local bChanged  = oControl:IsThisEnabled() ~= bFlag;
         tInput.release();
         oComponent.Hover, tInput.HoverPart = false, nil;
 

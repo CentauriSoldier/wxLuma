@@ -131,7 +131,9 @@ function MenuBar.create(oParent, tOptions)
                         if (tOptions.OnSelect) then tOptions.OnSelect(tSelection, oComponent); end
                     end});
                 tNext[sId] = oMenu;
-                oMenu.setEnabled(oComponent.isEnabled() and tSpec.Enabled ~= false);
+                -- Store only the bar/heading's own policy. Parent availability
+                -- is checked again when opening, rather than baked into popups.
+                oMenu.setEnabled(oComponent.Control:IsThisEnabled() and tSpec.Enabled ~= false);
                 tHeads[nIndex] = {Id = sId, Text = tSpec.Text or sId, Width = tSpec.Width or 88,
                     Image = tSpec.Image, Enabled = tSpec.Enabled};
                 tNextSpecs[nIndex] = tHeads[nIndex];

@@ -142,7 +142,9 @@ local function run()
     check(not oToolbar.openOverflow() and not oToolbar.activateItem("one"), "Disabled toolbar.");
     oToolbar.setEnabled(true);
     local tRects = oStatus.getLayout();
-    check(tRects[1].Width == 166 and tRects[2].Width == 334 and tRects[3].Width == 100,
+    local nStatusWidth = oStatus.Control:GetClientSizeWH();
+    local nFlexible = nStatusWidth - 100;
+    check(tRects[1].Width == math.floor(nFlexible / 3) and tRects[2].Width == nFlexible - tRects[1].Width and tRects[3].Width == 100,
         "Weighted sections distribute all remaining pixels.");
     local oHost = oStatus.getSection("b");
     local oChild = _Controls.toggleButton(oHost, {Skin = oSkin, Text = "Hosted"});
@@ -209,6 +211,117 @@ local function run()
     oPicker.Popup:Hide();
     check(not oPicker.isOpen(), "Native hiding resets popup state.");
     local tPalette = oPicker.getSwatches();
+    -- Every layout shares preview/commit, keyboard, alpha and state contracts.
+    local nBeforeLayoutChildren = oPanel:GetChildren():GetCount();
+    check(not pcall(_Controls.colorPicker, oPanel, {Skin = oSkin, Layout = "unknown"})
+        and oPanel:GetChildren():GetCount() == nBeforeLayoutChildren, "Invalid color layouts fail before native creation.");
+    check(oPicker.getLayout() == "sliders", "Existing color slider layout remains the default.");
+    for _, sLayout in ipairs({"square", "wheel"}) do
+        local nLayoutEvents, nColorEvents = 0, 0;
+        local oGraphic = _Controls.colorPicker(oPanel, {Skin = oSkin, Layout = sLayout,
+            Value = {R = 255, G = 0, B = 0, A = 73}});
+        oGraphic.layout(12, 150, 260, 44);
+        oGraphic.on("layoutChanged", function() nLayoutEvents = nLayoutEvents + 1; end);
+        oGraphic.on("valueChanged", function() nColorEvents = nColorEvents + 1; end);
+        check(oGraphic.getLayout() == sLayout and oGraphic.open(), "Graphic layout opens: "..sLayout);
+        click(oGraphic.Editor.Control, sLayout == "square" and 12 or 120, 54 + 108);
+        check(oGraphic.getValue().R == 255 and oGraphic.getValue().A == 73, "Plane editing preserves committed RGBA: "..sLayout);
+        click(oGraphic.Editor.Control, 315, 269);
+        check(oGraphic.getPreview().A == 0, "Vertical alpha bar reaches transparent: "..sLayout);
+        click(oGraphic.Editor.Control, 315, 54);
+        check(oGraphic.getPreview().A == 255, "Vertical alpha bar reaches opaque: "..sLayout);
+        local tGraphicPreview = oGraphic.getPreview();
+        oGraphic.setLayout("sliders", true); oGraphic.setLayout("sliders", true);
+        check(oGraphic.isOpen() and oGraphic.getPreview().A == tGraphicPreview.A
+            and oGraphic.getPreview().R == tGraphicPreview.R and nLayoutEvents == 1 and nColorEvents == 0,
+            "Changing layouts preserves the open preview and emits only one layout event.");
+        check(not pcall(oGraphic.setLayout, "bad") and oGraphic.getLayout() == "sliders" and oGraphic.isOpen(),
+            "Rejected layout changes preserve editor state.");
+        oGraphic.setLayout(sLayout);
+        oGraphic.close(false);
+        check(oGraphic.getValue().A == 73 and nColorEvents == 0, "Graphic cancel discards alpha edits: "..sLayout);
+        oGraphic.open();
+        oGraphic.Editor.handleKey("down", _wx.WXK_TAB);
+        oGraphic.Editor.handleKey("down", _wx.WXK_TAB);
+        oGraphic.Editor.handleKey("down", _wx.WXK_HOME);
+        check(oGraphic.getPreview().A == 0, "Keyboard navigation reaches alpha: "..sLayout);
+        oGraphic.Editor.handleKey("down", _wx.WXK_TAB, {Shift = true});
+        oGraphic.Editor.handleKey("down", _wx.WXK_HOME);
+        oGraphic.Editor.handleKey("down", _wx.WXK_END);
+        oGraphic.Editor.handleKey("down", _wx.WXK_RETURN);
+        check(not oGraphic.isOpen() and oGraphic.getValue().A == 0 and nColorEvents == 1,
+            "Graphic Enter commits once: "..sLayout);
+        local tGraphicState = oGraphic.getObjectState();
+        oGraphic.setLayout("sliders"); oGraphic.setObjectState(tGraphicState);
+        check(oGraphic.getLayout() == sLayout, "Object state restores color layout: "..sLayout);
+        oGraphic.setValue({R = 255, G = 0, B = 0, A = 255}); oGraphic.open();
+        local oGraphicBitmap, oGraphicDC = _wx.wxBitmap(360, 360), _wx.wxMemoryDC();
+        oGraphicDC:SelectObject(oGraphicBitmap);
+        oGraphic.Editor.draw(oGraphicDC, 360, 360);
+        local fImage, nImages = _wx.wxImage, 0;
+        _wx.wxImage = function(...) nImages = nImages + 1; return fImage(...); end;
+        local bDrawn, sDrawError = pcall(function()
+            for nDraw = 1, 20 do oGraphic.Editor.draw(oGraphicDC, 360, 360); end
+        end);
+        _wx.wxImage = fImage;
+        check(bDrawn and nImages == 0, "Steady graphic rendering reuses raster caches: "..sLayout.." "..tostring(sDrawError));
+        oGraphicDC:SelectObject(_wx.wxNullBitmap);
+        local oGraphicPixels = oGraphicBitmap:ConvertToImage();
+        if (sLayout == "square") then
+            check(oGraphicPixels:GetRed(225, 56) > 245 and oGraphicPixels:GetGreen(225, 56) < 10,
+                "Square renders the selected hue at high saturation/value.");
+            check(oGraphicPixels:GetRed(14, 56) > 245 and oGraphicPixels:GetGreen(14, 56) > 245
+                and oGraphicPixels:GetRed(14, 267) < 10, "Square overlays preserve white and black value limits.");
+        else
+            check(oGraphicPixels:GetRed(220, 162) > 245 and oGraphicPixels:GetGreen(220, 162) < 25,
+                "Wheel renders red on its right-hand hue axis.");
+            local tBeforeCorner = oGraphic.getPreview();
+            click(oGraphic.Editor.Control, 13, 55);
+            check(oGraphic.getPreview().R == tBeforeCorner.R and oGraphic.getPreview().G == tBeforeCorner.G,
+                "Wheel rectangle corners do not change the preview.");
+        end
+        oGraphicDC:SelectObject(oGraphicBitmap);
+        nImages = 0; _wx.wxImage = function(...) nImages = nImages + 1; return fImage(...); end;
+        bDrawn, sDrawError = pcall(function()
+            if (sLayout == "square") then oGraphic.Editor.handleKey("down", _wx.WXK_TAB); end
+            for nUpdate = 1, 20 do
+                oGraphic.Editor.handleKey("down", _wx.WXK_RIGHT);
+                oGraphic.Editor.draw(oGraphicDC, 360, 360);
+            end
+        end);
+        _wx.wxImage = fImage;
+        check(bDrawn and nImages <= 40, "Hue changes reuse the plane and rebuild only dependent bars: "..sLayout.." "..tostring(sDrawError));
+        oGraphicDC:SelectObject(_wx.wxNullBitmap);
+        oGraphicPixels:delete(); oGraphicDC:delete(); oGraphicBitmap:delete();
+        oGraphic.Editor.handlePointer("down", 120, 162);
+        oGraphic.Editor.handlePointer("move", 2000, -2000);
+        local tClamped = oGraphic.getPreview();
+        check(tClamped.R >= 0 and tClamped.R <= 255 and tClamped.G >= 0 and tClamped.G <= 255
+            and tClamped.B >= 0 and tClamped.B <= 255, "Captured plane drags clamp outside the graphic surface: "..sLayout);
+        oGraphic.setLayout("sliders");
+        check(not oGraphic.Editor.Control:HasCapture() and not oGraphic.Editor.Pressed,
+            "Changing layout during a drag releases mouse capture.");
+        oGraphic.close(false); oGraphic.destroy(); oGraphic.Control:Destroy();
+    end
+    local oGraphicTheme = require("wxLuma.Core.ControlTheme").create("System", require("wxLuma.wxLumaConfig").SkinPath);
+    local oThemedGraphic = _Controls.colorPicker(oPanel, {Theme = oGraphicTheme, Layout = "square",
+        Value = {R = 90, G = 150, B = 210, A = 110}});
+    oThemedGraphic.layout(12, 150, 260, 44);
+    local oThemeBitmap, oThemeDC = _wx.wxBitmap(360, 360), _wx.wxMemoryDC();
+    oThemeDC:SelectObject(oThemeBitmap);
+    for _, sName in ipairs({"System", "Obsidian", "System"}) do
+        oGraphicTheme.setName(sName);
+        for _, sLayout in ipairs({"square", "wheel"}) do
+            oThemedGraphic.setLayout(sLayout);
+            check(oThemedGraphic.open(), "Themed graphic layout opens: "..sName.."/"..sLayout);
+            oThemedGraphic.Editor.draw(oThemeDC, 360, 360);
+            check(oThemedGraphic.getValue().A == 110 and oThemedGraphic.getLayout() == sLayout,
+                "Theme changes preserve graphic layout and RGBA state.");
+            oThemedGraphic.close(false);
+        end
+    end
+    oThemeDC:SelectObject(_wx.wxNullBitmap); oThemeDC:delete(); oThemeBitmap:delete();
+    oThemedGraphic.destroy(); oThemedGraphic.Control:Destroy(); oGraphicTheme.destroy();
     tPalette[1].R = 4;
     check(oPicker.getSwatches()[1].R ~= 4, "Swatches are copied.");
     oPicker.setSwatches({{R = 1, G = 2, B = 3, A = 4}}, true);
@@ -313,7 +426,9 @@ local function run()
         "Sparse palette rejected.");
     oStatus.setItems({{Id = "a", Weight = 1e308}, {Id = "b", Weight = 1e308}});
     oStatus.layout(12, 80, 600, 42);
-    check(oStatus.getLayout()[1].Width == 300 and oStatus.getLayout()[2].Width == 300,
+    nStatusWidth = oStatus.Control:GetClientSizeWH();
+    check(oStatus.getLayout()[1].Width == math.floor(nStatusWidth / 2)
+        and oStatus.getLayout()[2].Width == nStatusWidth - math.floor(nStatusWidth / 2),
         "Large finite weights retain proportional allocation without overflow.");
     oStatus.setItems({{Id = "a", Text = "Ready", Weight = 2},
         {Id = "b", Text = "Working", Weight = 1}, {Id = "fixed", Text = "Fixed", Width = 100}});
@@ -342,7 +457,9 @@ local function run()
     oDC:SetDeviceOrigin(0, 0);
     oDC:SelectObject(_wx.wxNullBitmap);
     local oImage = oBitmap:ConvertToImage();
-    check(oImage:SaveFile(APP_PATH.."/Tests/ToolsPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save production preview.");
+    if (arg[2] == "--showcase") then
+        check(oImage:SaveFile(APP_PATH.."/Tests/ToolsPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save production preview.");
+    end
     oImage:delete();
     oDC:delete();
     oBrush:delete();
@@ -356,6 +473,8 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     check(#tWorkbench.Widgets.Tabs.Pages == #tWorkbench.Gallery.Categories, "Every gallery category has a tab.");
     tWorkbench.Gallery.show("Toolbar", true);

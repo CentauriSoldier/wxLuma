@@ -33,11 +33,17 @@ function Radio.group()
 
     --[[!
     @fqxn wxLuma.UI.RadioGroup.select
-    @desc Selects one group member, clears the others and optionally notifies the newly selected radio.
+    @desc Selects one live member of this group, clears the others and optionally
+        notifies it. Invalid/foreign members are rejected before any mutation.
     @param table oMember The radio to select.
     @param boolean|nil bNotify Whether to notify after a change; omitted means silent.
     !]]
     function oGroup.select(oMember, bNotify)
+        local bMember = false;
+        for _, oOther in ipairs(oGroup.Members) do
+            if (oOther == oMember and not oOther.Disposed) then bMember = true; break; end
+        end
+        assert(bMember, "Radio selection requires a live member of this group.");
         local bChanged = oGroup.Selected ~= oMember;
         oGroup.Selected = oMember;
         for _, oOther in ipairs(oGroup.Members) do

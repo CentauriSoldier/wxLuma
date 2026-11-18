@@ -17,6 +17,7 @@ local Spinner         = {};
 
 function Spinner.create(oParent, tOptions)
     tOptions = _Theme.options(tOptions, oParent);
+    _ControlNumeric.validateOptions(tOptions, true);
     return _ControlInput.create(oParent, _Border.hostOptions(tOptions), "Spinner", function(oComponent, tInput)
         local oSkin   = tOptions.Skin;
         local fFinite = _ControlNumeric.finite;
@@ -68,8 +69,8 @@ function Spinner.create(oParent, tOptions)
         tInput.activate = function(nPart)
             if (nPart and nPart > 0) then
                 oComponent.commitText();
-                oComponent.setValue(oComponent.Value + (nPart == 1 and oComponent.Step or -oComponent.Step),
-                    true);
+                oComponent.setValue(_ControlNumeric.advance(oComponent.Value, oComponent.Min, oComponent.Max,
+                    oComponent.Step, nPart == 1 and 1 or -1), true);
             end
         end;
 

@@ -188,7 +188,13 @@ local function run()
     oTip.hide();
     check(oDropdown.open(), "Contained dropdown opens.");
     local nDropdownWidth, nDropdownHeight = oDropdown.Popup:GetSizeWH();
-    inside(oDropdown, oDropdown.Popup, 110, 4 * oDropdown.List.RowHeight + 8);
+    local nClientWidth, nClientHeight = oDropdown.Popup:GetClientSizeWH();
+    local nAnchorWidth = oDropdown.Control:GetClientSizeWH();
+    local _, nListHeight = oDropdown.List.Control:GetSizeWH();
+    local _, nListClientHeight = oDropdown.List.Control:GetClientSizeWH();
+    check(nClientWidth == nAnchorWidth and nClientHeight == 4 * oDropdown.List.RowHeight + 8 + nListHeight - nListClientHeight,
+        "Dropdown natural client size includes complete rows and list padding.");
+    inside(oDropdown, oDropdown.Popup, nDropdownWidth, nDropdownHeight);
     local tDropdown = rectangle(oDropdown.Popup);
     local tDropdownBounds = oDropdown.getContainmentBounds();
     check(tDropdown.Y == tDropdownBounds.Y + tDropdownBounds.Height - nDropdownHeight,
@@ -219,6 +225,8 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     _wx.wxYield();
 

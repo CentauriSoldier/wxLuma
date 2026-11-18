@@ -9,6 +9,7 @@ package.cpath = APP_PATH.."/Bin/?.dll";
 local _wx       = require("wx");
 local _Controls = require("wxLuma.Controls");
 local _nChecks  = 0;
+local _bShowcase = arg and arg[2] == "--showcase";
 _wx.wxGetApp():SetExitOnFrameDelete(false);
 
 --[[!
@@ -98,6 +99,27 @@ local function run()
     });
     oTree.layout(10, 10, 320, 360);
     oTable.layout(350, 10, 700, 360);
+
+    -- Invalid sequence shape must be rejected before native data or selection
+    -- changes. Exercise both an initial hole and a hole inside an allocated array.
+    oTable.setValue("a");
+    check(not pcall(oTable.setItems, {[2] = {Id = "lost", Cells = {"Lost", "9"}}})
+        and #oTable.getItems() == 3 and oTable.getValue() == "a", "Sparse replacement cannot erase table rows or selection.");
+    check(not pcall(oTable.setItems, {Named = {Id = "lost", Cells = {"Lost", "9"}}})
+        and #oTable.getItems() == 3 and nTableChanges == 0, "Non-array table replacement cannot mutate rows or notify.");
+    local tSparseColumns = {{Text = "First"}, {Text = "Missing"}, {Text = "Last"}}; tSparseColumns[2] = nil;
+    check(not pcall(_Controls.table, oFrame, {Skin = oSkin, Columns = tSparseColumns}), "Table construction rejects a missing middle column.");
+    check(not pcall(oTable.setItems, {{Id = "bad", Cells = {[1] = "Name", [2] = "2", Named = "extra"}}})
+        and #oTable.getItems() == 3 and oTable.getValue() == "a", "Cell arrays reject extra keys without replacing existing rows.");
+    check(not pcall(_Controls.tree, oFrame, {Skin = oSkin, Items = {[2] = {Id = "lost", Text = "Lost"}}}),
+        "Tree construction rejects sparse root arrays.");
+    local tSparseChildren = {{Id = "first", Text = "First"}, {Id = "missing", Text = "Missing"}, {Id = "last", Text = "Last"}};
+    tSparseChildren[2] = nil;
+    check(not pcall(_Controls.tree, oFrame, {Skin = oSkin, Items = {{Id = "root", Text = "Root", Children = tSparseChildren}}}),
+        "Tree construction rejects holes in nested Children arrays.");
+    check(not pcall(_Controls.tree, oFrame, {Skin = oSkin, Items = {{Id = "root", Text = "Root", Children = {Named = {Id = "lost", Text = "Lost"}}}}}),
+        "Tree construction rejects non-array child keys.");
+    oTable.setValue(nil);
     oSplit.layout(10, 390, 1000, 300);
     oChild.layout(10, 10, 160, 40);
     oFrame:Show(true);
@@ -282,7 +304,12 @@ local function run()
     check(nItemContext == 1 and nColumnContext == 1 and nColumnResize == 1,
         "Table context/column events include stable IDs, indices and widths.");
     -- Divider movement must change both native pane bounds coherently.
-    check(oSplit.getSplitPosition() == 492, "Initial split uses available span.");
+    -- Native borders reduce client size. Verify the two actual pane extents
+    -- against that client area rather than assuming the outer width is usable.
+    local nSplitClientWidth = oSplit.Control:GetClientSizeWH();
+    local nInitialFirst, nInitialSecond = oSplit.First:GetSizeWH(), oSplit.Second:GetSizeWH();
+    check(math.abs(nInitialFirst - nInitialSecond) <= 1 and nInitialFirst + nInitialSecond + 16 == nSplitClientWidth
+        and oSplit.getSplitPosition() == nInitialFirst, "Initial split divides the actual client span evenly.");
     -- Cursor feedback must match the real divider rectangle. Copy native
     -- cursors before comparing: GetCursor can return a reference to mutable state.
     local oArrowCursor = _wx.wxCursor(oSplit.First:GetCursor());
@@ -382,13 +409,15 @@ local function run()
     oSplit.setOrientation("horizontal");
     key(oSplit.Control, _wx.WXK_HOME);
     local nFirstWidth, nFirstHeight = oSplit.First:GetSizeWH();
-    check(nFirstWidth == 992 and nFirstHeight == 80, "Horizontal orientation uses pane heights.");
+    check(nFirstWidth == nSplitClientWidth - 8 and nFirstHeight == 80, "Horizontal orientation uses pane heights.");
     oSplit.setOrientation("vertical");
     oSplit.setValue(0.5);
     oSplit.layout(10, 390, 120, 80);
     local nSmallFirst = oSplit.First:GetSizeWH();
     local nSmallSecond = oSplit.Second:GetSizeWH();
-    check(nSmallFirst + nSmallSecond + 8 == 112, "Tiny layouts scale minima without negative panes.");
+    local nSmallClientWidth = oSplit.Control:GetClientSizeWH();
+    check(nSmallFirst + nSmallSecond + 16 == nSmallClientWidth and nSmallFirst > 0 and nSmallSecond > 0,
+        "Tiny layouts scale minima to the client area without negative panes.");
     oSplit.layout(10, 390, 1000, 300);
     oSplit.setValue(0.5);
     mouse(oChild.Control, _wx.wxEVT_LEFT_DOWN, 20, 20);
@@ -435,10 +464,33 @@ local function run()
 
     check(nDisposed == 3, "All objects dispose exactly once.");
     oChild.destroy();
+
+    -- A tab page's local flag follows its owning tabs, not a temporary ancestor
+    -- disable. Test creation and replacement as well as explicit local disabling.
+    oFrame:Enable(false);
+    local oTabs = _Controls.tabs(oFrame, {Skin = oSkin, Items = {{Id = "one", Text = "One"}, {Id = "two", Text = "Two"}}});
+    oFrame:Enable(true);
+    check(oTabs.isEnabled() and oTabs.Pages[1]:IsEnabled() and oTabs.Pages[2]:IsEnabled(),
+        "Tabs created under a disabled ancestor have enabled pages when the ancestor returns.");
+    local oRetainedPage = oTabs.getPage("one");
+    oFrame:Enable(false);
+    oTabs.setItems({{Id = "one", Text = "Renamed"}, {Id = "new", Text = "New"}});
+    oFrame:Enable(true);
+    check(oTabs.getPage("one") == oRetainedPage and oRetainedPage:IsEnabled() and oTabs.getPage("new"):IsEnabled(),
+        "Tab replacement under a disabled ancestor preserves enabled retained/new pages.");
+    oFrame:Enable(false); oTabs.setEnabled(false); oTabs.setItems(oTabs.getItems()); oFrame:Enable(true);
+    check(not oTabs.isEnabled() and not oTabs.Pages[1]:IsEnabled() and not oTabs.Pages[2]:IsEnabled(),
+        "Tabs explicitly disabled under an ancestor remain disabled after replacement/re-enable.");
+    oTabs.setEnabled(true);
+    check(oTabs.Pages[1]:IsEnabled() and oTabs.Pages[2]:IsEnabled(), "Explicit tab re-enable restores page availability.");
+    oTabs.destroy();
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
 
+    -- Native model/input coverage above runs by default. Opening the workbench
+    -- requires an explicit --showcase request, independent of these checks.
+    if (not _bShowcase) then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Gallery.show("Tree", true);
     tWorkbench.Layout();

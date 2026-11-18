@@ -1,0 +1,48 @@
+# Bug fixes
+
+- Replaced crashing System switch graphics-context drawing with plain rectangular DC drawing.
+- Wheel zoom focuses ImageViewer so subsequent keyboard shortcuts reach it.
+- ImageViewer state restores zoom, pan, selection, tool, bindings, and interaction settings.
+- Offscreen ImageViewer rendering preserves live zoom, pan, and coordinate mapping.
+- FileBrowser state restores directory, filters, rows, selection, and history consistently.
+- FileBrowser rejects sparse selection arrays without clearing existing selections.
+- FileBrowser sorting preserves selection without spurious selection events.
+- Rejected FileBrowser selections no longer suppress subsequent selection callbacks.
+- FileBrowser history restoration respects single-selection mode.
+- FileBrowser navigation buttons retain their enabled policy under disabled ancestors.
+- Rejected dropdown item updates preserve the open popup and selection preview.
+- Radio groups reject foreign, unregistered, and disposed members before changing selection.
+- Invalid SearchField values preserve pending debounce requests.
+- SearchField rejects debounce values outside native timer limits.
+- Disposed SearchField search calls no longer access deleted timers.
+- List and ListEx reject sparse item arrays without losing rows or selection.
+- Table rejects sparse row, column, and cell arrays.
+- Tree rejects sparse root and child arrays before changing native items.
+- Typed lists reject sparse column definitions.
+- Shared enabled setters preserve local state under disabled ancestors.
+- Tabs created or rebuilt under disabled ancestors retain their page enable settings.
+- Rebuilt menus preserve bar and heading enable settings under disabled ancestors.
+- PropertyGrid read-only changes survive disabled-parent cycles.
+- StatusBar sections created under disabled ancestors retain their local enable settings.
+- Chart tooltip options preserve enabled policy under disabled ancestors.
+- Chart Home shortcuts respect disabled user zoom.
+- Numeric controls reject overflowing ranges and step counts before creating native controls.
+- RangeSlider rejects unrepresentable range or step updates without changing state or emitting events.
+- Slider and RangeSlider snapping clamps oversized rounded steps before multiplication overflows.
+- Numeric keyboard stepping and spinner buttons saturate safely with very large steps.
+- Slider and RangeSlider clamp pointer fractions before converting them to numeric values.
+- Event listeners receive independent nested payload snapshots without altering other listeners' data.
+- Native event observers stop follow-up handling when a callback disposes the control.
+- Editor notifications stop internal hooks after callback disposal or replacement of the value.
+- Search callbacks can dispose or disable the field without accessing deleted timers or queuing stale searches.
+- Search clear actions avoid restoring focus after callback disposal.
+- Scrollbars reject overflowing spans and invalid settings before native creation or range changes.
+- Scrollbar thumb geometry stays proportional with very large finite ranges and pages.
+- Scrollbar keyboard, wheel, and pointer movement clamp before arithmetic overflows.
+- Tooltips validate native timer limits and display zero-delay tips immediately.
+- NumericField state restores bounds, precision, and step together without invalid intermediate settings.
+- RangeSlider state restores compatible bounds and step together.
+- The default runner includes previously omitted component regression suites without launching the showcase.
+- Regression geometry checks account for native client borders.
+- Default regressions use temporary image fixtures and no longer overwrite preview images.
+- Polygon reserve-edge pixels remain stable while the current fill changes.

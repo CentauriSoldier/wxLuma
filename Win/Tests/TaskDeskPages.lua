@@ -138,7 +138,12 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
         OnCheckChange = function(sId, bValue) tApp.Log("Approval "..sId..(bValue and " checked." or " reopened.")); end}, 0, 0, 1, 180);
 
     local tResources = fPage(3);
-    local tBuild = fSection(tResources, "Build controls", 116);
+    local tFiles = fSection(tResources, "Project files", 360);
+    fPut(tFiles, "ProjectFiles", "fileBrowser", {Directory = oLuma.Path, MultiSelect = true,
+        OnActivate = function(tEntry)
+            tApp.Log("File selected for review: "..tEntry.Path);
+        end}, 0, 0, 1, 360);
+    local tBuild = fSection(tResources, "Build controls", 150);
     local tMeters = {};
     local function fCapacity(nValue)
         tSettings.Capacity = nValue;
@@ -157,13 +162,82 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
             end
         end}, 0, 0, 1, 38);
     fPut(tBuild, "Capacity", "slider", {Min = 0, Max = 100, Step = 1, Value = 65, OnChange = fCapacity}, 0, 52, 0.48, 36);
-    fPut(tBuild, "Workers", "knob", {Min = 0, Max = 100, Value = 65, Rate = 5, OnChange = fCapacity}, 0.53, 42, 0.15, 74);
+    fPut(tBuild, "Workers", "knob", {Min = 0, Max = 100, Value = 65, Rate = 5, OnChange = fCapacity,
+        OnChangeComplete = function(nValue)
+            local sMessage = string.format("Worker allocation complete: %.4g", nValue);
+            tObjects.WorkersComplete.setValue(sMessage); tApp.Log(sMessage);
+        end}, 0.53, 42, 0.15, 74);
+    fPut(tBuild, "WorkersComplete", "label", {Value = "Adjust the worker dial; completed changes appear here.", Wrap = true}, 0, 120, 1, 28);
     fPut(tBuild, "BuildLabel", "label", {Value = "Build capacity / worker allocation", Wrap = true}, 0.72, 56, 0.28, 48);
-    local tUsage = fSection(tResources, "Capacity: package · processor · storage · memory", 130);
-    for nIndex, tMeter in ipairs({{"Package", "progress"}, {"Processor", "circularProgress"}, {"Storage", "globeProgress"}, {"Memory", "radialProgress"}}) do
-        tMeters[#tMeters + 1] = fPut(tUsage, tMeter[1], tMeter[2], {Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"},
+    local tUsage = fSection(tResources, "Unified progress: bar · arc · globe · radial", 354);
+    local P = oLuma.Progress;
+    local tComparisons = {};
+    for nIndex, tMeter in ipairs({{"Package", P.Shape.RECTANGLE, P.Fill.LINEAR},
+        {"Processor", P.Shape.CIRCLE, P.Fill.ANGULAR}, {"Storage", P.Shape.CIRCLE, P.Fill.LINEAR},
+        {"Memory", P.Shape.CIRCLE, P.Fill.RADIAL}}) do
+        tMeters[#tMeters + 1] = fPut(tUsage, tMeter[1], "progress", {Shape = tMeter[2], FillMode = tMeter[3],
+            Direction = P.Direction.FORWARD, Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"},
             (nIndex - 1) * 0.25, nIndex == 1 and 42 or 0, 0.23, nIndex == 1 and 36 or 112);
+        local sLegacy = ({"progress", "circularProgress", "globeProgress", "radialProgress"})[nIndex];
+        local oOriginal = fPut(tUsage, tMeter[1].."Original", sLegacy,
+            {Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"},
+            (nIndex - 1) * 0.25, nIndex == 1 and 196 or 154, 0.23, nIndex == 1 and 36 or 112);
+        tComparisons[#tComparisons + 1] = {Unified = tObjects[tMeter[1]], Original = oOriginal};
+        tMeters[#tMeters + 1] = oOriginal;
     end
+    fPut(tUsage, "ProgressCompareLabel", "label", {Value = "Top: numeric interface. Bottom: original controls. Both rows share capacity, direction and reserve.", Wrap = true}, 0, 118, 1, 32);
+    fPut(tUsage, "ProgressDirection", "dropdown", {Items = {"Direction: forward (0)", "Direction: reverse (1)"}, Value = 1,
+        OnChange = function(nIndex)
+            for _, tPair in ipairs(tComparisons) do
+                tPair.Unified.setFillDirection(nIndex - 1, true);
+                if (tPair.Original) then
+                    if (tPair.Original.setOrigin) then tPair.Original.setOrigin(tPair.Unified.getOrigin(), true);
+                    else tPair.Original.setDirection(tPair.Unified.getDirection(), true); end
+                end
+            end
+        end}, 0, 278, 0.48, 36);
+    fPut(tUsage, "ProgressReserve", "dropdown", {Items = {"Reserved: 0", "Reserved: 25", "Reserved: 50", "Reserved: 100"}, Value = 1,
+        OnChange = function(nIndex)
+            local nReserve = ({0, 25, 50, 100})[nIndex];
+            for _, oMeter in ipairs(tMeters) do oMeter.setReserved(nReserve, true); oMeter.setValue(tSettings.Capacity); end
+        end}, 0.52, 278, 0.48, 36);
+    fPut(tUsage, "ProgressHint", "label", {Value = "Change direction or reserve; adjust capacity above. A reserve of 100 leaves no usable capacity.", Wrap = true}, 0, 322, 1, 32);
+    local tPolygon = fSection(tResources, "Polygon progress: linear · radial · angular", 362);
+    local tPentagon = {{X = 0.5, Y = 0}, {X = 1, Y = 0.3}, {X = 0.85, Y = 1}, {X = 0.15, Y = 1}, {X = 0, Y = 0.3}};
+    local tConcave = {{X = 0, Y = 0}, {X = 1, Y = 0.08}, {X = 0.57, Y = 0.47},
+        {X = 0.94, Y = 1}, {X = 0.06, Y = 0.91}, {X = 0.31, Y = 0.43}};
+    local tPolygonMeters = {};
+    for mode = 0, 2 do
+        local oMeter = fPut(tPolygon, "Polygon"..mode, "progress", {Shape = P.Shape.POLYGON, FillMode = mode,
+            Polygon = tPentagon, Orientation = "vertical", Direction = P.Direction.FORWARD,
+            Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"}, mode * 0.34, 0, 0.3, 142);
+        tPolygonMeters[#tPolygonMeters + 1] = oMeter; tMeters[#tMeters + 1] = oMeter;
+        tComparisons[#tComparisons + 1] = {Unified = oMeter};
+    end
+    for index, text in ipairs({"Linear fill", "Radial in/out", "Angular sweep"}) do
+        fPut(tPolygon, "PolygonMode"..index, "label", {Value = text, Wrap = true}, (index - 1) * 0.34, 146, 0.3, 28);
+    end
+    fPut(tPolygon, "PolygonVertices", "dropdown", {Items = {"Silhouette: pentagon", "Silhouette: concave"}, Value = 1,
+        OnChange = function(nIndex)
+            for _, oMeter in ipairs(tPolygonMeters) do oMeter.setPolygon(nIndex == 1 and tPentagon or tConcave, true); end
+        end}, 0, 178, 0.48, 36);
+    fPut(tPolygon, "PolygonReserveDirection", "dropdown", {Items = {"Reserve direction: auto", "Reserve direction: forward/out/CW", "Reserve direction: reverse/in/CCW"}, Value = 1,
+        OnChange = function(nIndex)
+            local nDirection;
+            if (nIndex ~= 1) then nDirection = nIndex - 2; end
+            for _, oMeter in ipairs(tPolygonMeters) do oMeter.setReserveFillDirection(nDirection, true); end
+        end}, 0.52, 178, 0.48, 36);
+    fPut(tPolygon, "PolygonRadii", "dropdown", {Items = {"Radial band: solid", "Radial band: 25..90%", "Radial band: 60..100%"}, Value = 1,
+        OnChange = function(nIndex)
+            local tRadii = ({{0, 100}, {25, 90}, {60, 100}})[nIndex];
+            for _, oMeter in ipairs(tPolygonMeters) do if (oMeter.setRadii) then oMeter.setRadii(tRadii[1], tRadii[2], true); end end
+        end}, 0, 224, 0.48, 36);
+    local tAngles = {0, 45, 90, 180, 270, 359};
+    fPut(tPolygon, "PolygonStartAngle", "dropdown", {Items = {"Arc start: 0", "Arc start: 45", "Arc start: 90", "Arc start: 180", "Arc start: 270", "Arc start: 359"}, Value = 1,
+        OnChange = function(nIndex) tObjects.Polygon2.setStartAngle(tAngles[nIndex], true); end}, 0.52, 224, 0.48, 36);
+    fPut(tPolygon, "PolygonReserveAngle", "dropdown", {Items = {"Reserve start: auto", "Reserve start: 0", "Reserve start: 45", "Reserve start: 90", "Reserve start: 180", "Reserve start: 270", "Reserve start: 359"}, Value = 1,
+        OnChange = function(nIndex) tObjects.Polygon2.setReserveStartAngle(nIndex == 1 and nil or tAngles[nIndex - 1], true); end}, 0, 270, 0.48, 36);
+    fPut(tPolygon, "PolygonHint", "label", {Value = "Capacity, fill direction and reserved amount use the controls above. Reserve direction and arc angle can differ from the fill.", Wrap = true}, 0, 316, 1, 42);
     local tActivity = fSection(tResources, "Build history", 150);
     local oHistory = fPut(tActivity, "BuildHistory", "list", {Items = {"Release package — ready", "Documentation — reviewed", "Quality checks — pending"}, RowHeight = 36}, 0, 0, 0.84, 140);
     local oHistoryBar = fPut(tActivity, "HistoryOffset", "scrollbar", {Min = 0, Max = 20, Page = 3, Value = 0,
@@ -176,22 +250,72 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
         oHistory.layout(0, 32, math.max(1, nWidth - nBar - nGap), 140);
         oHistoryBar.layout(math.max(0, nWidth - nBar), 32, nBar, 140);
     end;
-    local tPreview = fSection(tResources, "Release artwork and review", 220);
+    local tPreview = fSection(tResources, "Release artwork and review", 550);
     local pImage = oLuma.Config.ImagePath.."/Menu/Command Shield.png";
-    local oPreview = fPut(tPreview, "PreviewPanel", "panel", {Text = "Release preview", MinWidth = 220, MinHeight = 160}, 0, 0, 0.6, 200);
-    local oImage = fOwn("Artwork", "image", oPreview.Content, {Value = pImage, ScaleMode = "contain"});
+    local oPreview = fPut(tPreview, "PreviewPanel", "panel", {Text = "Release preview", MinWidth = 220, MinHeight = 160}, 0, 0, 0.64, 270);
+    local oImage = fOwn("Artwork", "imageViewer", oPreview.Content, {Value = pImage});
     oPreview.Content:Connect(_wx.wxEVT_SIZE, function(oEvent)
         local nW, nH = oPreview.Content:GetClientSizeWH(); oImage.layout(0, 0, math.max(1, nW), math.max(1, nH)); oEvent:Skip();
     end);
-    fPut(tPreview, "ReviewArtwork", "imageButton", {Image = pImage, Text = "Review release", OnClick = fReview}, 0.66, 20, 0.24, 110);
+    -- Keep the passive image example beside the interactive inspection surface.
+    fPut(tPreview, "ArtworkThumbnail", "image", {Value = pImage, ScaleMode = "contain"}, 0.7, 0, 0.24, 65);
+    fPut(tPreview, "ReviewArtwork", "imageButton", {Image = pImage, Text = "Review release", OnClick = fReview}, 0.68, 75, 0.28, 100);
+    fPut(tPreview, "ArtworkFit", "button", {Text = "Fit", OnClick = function()
+        if (oImage.isZoomEnabled()) then oImage.fit(true); end
+    end}, 0, 280, 0.18, 36);
+    fPut(tPreview, "ArtworkActual", "button", {Text = "1:1", OnClick = function()
+        if (oImage.isZoomEnabled()) then oImage.actualSize(true); end
+    end}, 0.2, 280, 0.18, 36);
+    fPut(tPreview, "ArtworkSelect", "checkbox", {Text = "Select pixels", OnChange = function(bValue)
+        oImage.setTool(bValue and "select" or "pan", true);
+    end}, 0.4, 280, 0.6, 36);
+    fPut(tPreview, "ArtworkPanEnabled", "checkbox", {Text = "Allow pan", Selected = true, OnChange = function(bValue)
+        oImage.setPanEnabled(bValue, true);
+    end}, 0, 324, 0.3, 36);
+    fPut(tPreview, "ArtworkZoomEnabled", "checkbox", {Text = "Allow zoom", Selected = true, OnChange = function(bValue)
+        oImage.setZoomEnabled(bValue, true);
+        tObjects.ArtworkFit.setEnabled(bValue); tObjects.ArtworkActual.setEnabled(bValue);
+    end}, 0.33, 324, 0.3, 36);
+    fPut(tPreview, "ArtworkSelectionEnabled", "checkbox", {Text = "Allow selection", Selected = true, OnChange = function(bValue)
+        oImage.setSelectionEnabled(bValue, true); tObjects.ArtworkSelect.setEnabled(bValue);
+    end}, 0.66, 324, 0.34, 36);
+    local oBindingHelp = fPut(tPreview, "ArtworkBindingHelp", "label", {Value = "Default: left/middle-drag pan · Shift-left select · Wheel/+/- zoom · F fit · 1 actual size", Wrap = true}, 0, 414, 1, 38);
+    fPut(tPreview, "ArtworkBindingPreset", "dropdown", {Items = {"Default bindings", "Alternate bindings"}, Value = 1, OnChange = function(nValue)
+        if (nValue == 1) then
+            oImage.resetBindings(true);
+            oBindingHelp.setValue("Default: left/middle-drag pan · Shift-left select · Wheel/+/- zoom · F fit · 1 actual size");
+        else
+            local tBindings = oImage.getDefaultBindings();
+            tBindings.Pan = {{Type = "drag", Button = "right"}};
+            tBindings.ZoomIn = {{Type = "key", Key = _wx.WXK_UP}, {Type = "wheel", Direction = 1}};
+            tBindings.ZoomOut = {{Type = "key", Key = _wx.WXK_DOWN}, {Type = "wheel", Direction = -1}};
+            tBindings.Fit = {{Type = "key", Key = _wx.WXK_HOME}};
+            tBindings.ActualSize = {{Type = "key", Key = _wx.WXK_END}};
+            oImage.setBindings(tBindings, true);
+            oBindingHelp.setValue("Alternate: right-drag pan · Shift-left select · Wheel/Up/Down zoom · Home fit · End actual size");
+        end
+    end}, 0, 368, 0.6, 36);
+    local oPixelInfo = fPut(tPreview, "ArtworkPixel", "label", {Value = "Move over the image to inspect source RGBA pixels.", Wrap = true}, 0, 460, 1, 38);
+    local oSelectionInfo = fPut(tPreview, "ArtworkSelection", "label", {Value = "No pixel selection. Escape cancels a drag or clears selection.", Wrap = true}, 0, 506, 1, 38);
+    oImage.on("pixelHovered", function(oSource, tEvent)
+        local tPixel = tEvent.Pixel;
+        oPixelInfo.setValue(tPixel and string.format("Pixel (%d, %d) · RGBA (%d, %d, %d, %d)",
+            tPixel.X, tPixel.Y, tPixel.Red, tPixel.Green, tPixel.Blue, tPixel.Alpha)
+            or "Move over the image to inspect source RGBA pixels.");
+    end);
+    oImage.on("selectionChanged", function(oSource, tEvent)
+        local tRect = tEvent.Selection;
+        oSelectionInfo.setValue(tRect and string.format("Selection (%d, %d) · %d × %d source pixels", tRect.X, tRect.Y, tRect.Width, tRect.Height)
+            or "No pixel selection. Escape cancels a drag or clears selection.");
+    end);
     local oContext = fOwn("BuildContext", "contextMenu", oFrame, {Items = {{Id = "review", Text = "Review release"}, {Id = "ready", Text = "Mark build ready"}},
         OnSelect = function(tChoice) if (tChoice.Id == "review") then fReview(); else fCapacity(100); end end});
     local oRadial = fOwn("BuildRadial", "radialMenu", oFrame, {Items = {{Id = "review", Text = "Review"}, {Id = "build", Text = "Build"}},
         OnSelect = function(tChoice) if (tChoice.Id == "review") then fReview(); else fCapacity(100); end end});
-    local oActions = fPut(tPreview, "BuildActions", "button", {Text = "Build actions", OnClick = function() oContext.showAtObject(oHistory); end}, 0.66, 148, 0.3, 36);
+    local oActions = fPut(tPreview, "BuildActions", "button", {Text = "Build actions", OnClick = function() oContext.showAtObject(oHistory); end}, 0.68, 184, 0.3, 36);
     fOwn("BuildTip", "tooltip", oActions.Control, {Text = "Open release commands. Right-click the build history for the same actions."});
     oContext.attach(oHistory.Control);
-    fPut(tPreview, "QuickActions", "button", {Text = "Quick actions", OnClick = function() oRadial.showAtObject(oActions); end}, 0.66, 188, 0.3, 32);
+    fPut(tPreview, "QuickActions", "button", {Text = "Quick actions", OnClick = function() oRadial.showAtObject(oActions); end}, 0.68, 228, 0.3, 32);
 
     local tReports = fPage(4);
     for _, tReport in ipairs({{"Throughput", "lineChart", "Completed tasks in queue order"}, {"Effort", "areaChart", "Open effort by task"},
@@ -203,6 +327,21 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
     end
 
     local tPreferences = fPage(5);
+    local tColors = fSection(tPreferences, "Color pickers: square, wheel and transparency", 156);
+    fPut(tColors, "ColorLayout", "dropdown", {Items = {"Project layout: sliders", "Project layout: square", "Project layout: wheel"}, Value = 2,
+        OnChange = function(nIndex) tObjects.ProjectColor.setLayout(({"sliders", "square", "wheel"})[nIndex], true); end}, 0, 0, 0.48, 36);
+    fPut(tColors, "ProjectColor", "colorPicker", {Layout = "square", Value = {R = 40, G = 120, B = 200},
+        OnChange = function(tColor)
+            tSettings.Color = tColor;
+            tObjects.ColorStatus.setValue(string.format("Project color: #%02X%02X%02X%02X", tColor.R, tColor.G, tColor.B, tColor.A));
+        end}, 0, 46, 0.48, 40);
+    fPut(tColors, "AccentColor", "colorPicker", {Layout = "wheel", Value = {R = 210, G = 90, B = 65, A = 128},
+        OnChange = function(tColor)
+            tSettings.AccentColor = tColor;
+            tObjects.ColorStatus.setValue(string.format("Accent color: #%02X%02X%02X%02X", tColor.R, tColor.G, tColor.B, tColor.A));
+        end}, 0.52, 46, 0.48, 40);
+    fPut(tColors, "ColorHint", "label", {Value = "Left: project color and layout selector. Right: accent hue wheel. Both include vertical alpha bars.", Wrap = true}, 0, 94, 1, 32);
+    fPut(tColors, "ColorStatus", "label", {Value = "Open either color; Apply commits and Escape cancels.", Wrap = true}, 0, 128, 1, 28);
     local tFiles = fSection(tPreferences, "Source material and delivery folder", 128);
     local oFile = fPut(tFiles, "SourceFile", "filePicker", {Value = "", Hint = "Choose release notes",
         OnChange = function(sValue) tSettings.SourceFile = sValue; end}, 0, 0, 1, 36);
@@ -221,9 +360,8 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
     end
     fPut(tPolicy, "WorkHours", "rangeSlider", {Min = 0, Max = 24, Step = 1, Value = {Low = 9, High = 17},
         OnChange = function(tValue) tSettings.WorkHours = tValue; end}, 0, 94, 0.6, 42);
-    fPut(tPolicy, "ProjectColor", "colorPicker", {Value = {R = 40, G = 120, B = 200}, OnChange = function(tColor) tSettings.Color = tColor; end}, 0.67, 94, 0.18, 36);
     fPut(tPolicy, "ReadyLED", "led", {Value = true, Size = 24, Color = {R = 50, G = 170, B = 90}}, 0.88, 92, 0.1, 42);
-    fPut(tPolicy, "HoursLabel", "label", {Value = "Working hours · Project color · Ready", Wrap = true}, 0, 140, 1, 32);
+    fPut(tPolicy, "HoursLabel", "label", {Value = "Working hours · Ready", Wrap = true}, 0, 140, 1, 32);
     local tAdvanced = fSection(tPreferences, "Advanced project settings", 240);
     fPut(tAdvanced, "Properties", "propertyGrid", {Properties = {{Id = "project", Type = "category", Text = "Project"},
         {Id = "name", Text = "Name", Value = "Release workspace"}, {Id = "version", Text = "Version", Value = "1.0"},

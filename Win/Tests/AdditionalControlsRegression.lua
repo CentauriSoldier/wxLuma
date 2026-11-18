@@ -85,8 +85,39 @@ local function run()
     check(oText.isReadOnly() and oText.getValue() == "typed\ntext", "Multiline state restores text and editing policy.");
 
     local nRangeChanges = 0;
+    local nChildren = oFrame:GetChildren():GetCount();
+    check(not pcall(fCreate, "rangeSlider", {Min = 0, Max = 1, Step = 1e-320, Value = {Low = 0.25, High = 0.75}})
+        and oFrame:GetChildren():GetCount() == nChildren, "Unrepresentable range steps fail before native creation.");
     local oRange = fCreate("rangeSlider", {Min = 0, Max = 100, Step = 5, Value = {Low = 20, High = 80},
         OnChange = function() nRangeChanges = nRangeChanges + 1; end}, 20, 175, 300, 50);
+    local nRangeEvents, nStepEvents = 0, 0;
+    oRange.on("rangeChanged", function() nRangeEvents = nRangeEvents + 1; end);
+    oRange.on("stepChanged", function() nStepEvents = nStepEvents + 1; end);
+    check(not pcall(oRange.setStep, 1e-320, true) and oRange.getStep() == 5
+        and oRange.getValue().Low == 20 and oRange.getValue().High == 80 and nStepEvents == 0,
+        "Rejected range steps preserve interval, step and notifications.");
+    oRange.setStep(1e-300);
+    check(not pcall(oRange.setRange, 0, 1e308, true) and oRange.getRange() == 0
+        and select(2, oRange.getRange()) == 100 and oRange.getValue().Low == 20
+        and oRange.getValue().High == 80 and nRangeEvents == 0,
+        "Rejected range bounds preserve bounds, interval and notifications.");
+    oRange.setStep(5);
+    local oLargeRange = fCreate("rangeSlider", {Min = 0, Max = 1.7e308, Step = 1e308,
+        Value = {Low = 0, High = 1.7e308}}, 20, 175, 300, 50);
+    check(oLargeRange.getValue().High == 1.7e308, "Range snapping clamps before a rounded step product overflows.");
+    oLargeRange.handleKey("down", _wx.WXK_PAGEUP);
+    check(oLargeRange.getValue().Low == 1.7e308, "Large range page increments saturate without overflow.");
+    oLargeRange.handleKey("down", _wx.WXK_PAGEDOWN);
+    check(oLargeRange.getValue().Low == 0, "Large range page decrements saturate without overflow.");
+    local oTinyRange = fCreate("rangeSlider", {Min = 0, Max = 1, Step = 1e-308,
+        Value = {Low = 0.25, High = 0.75}}, 20, 175, 300, 50);
+    local tTinyState = oTinyRange.getObjectState();
+    oTinyRange.setRangeAndStep(0, 100, 1);
+    local tWideState = oTinyRange.getObjectState();
+    check(pcall(oTinyRange.setObjectState, tTinyState) and oTinyRange.getStep() == 1e-308,
+        "Range state restores tiny steps together with their compatible bounds.");
+    check(pcall(oTinyRange.setObjectState, tWideState) and select(2, oTinyRange.getRange()) == 100
+        and oTinyRange.getStep() == 1, "Range state restores wide bounds without applying an incompatible intermediate step.");
     oRange.setValue({Low = -5, High = 103}, true);
     check(oRange.getValue().Low == 0 and oRange.getValue().High == 100 and nRangeChanges == 1, "Range clamps both endpoints.");
     check(not pcall(oRange.setValue, {Low = 80, High = 20}) and oRange.getValue().High == 100, "Reversed range input is atomic.");
@@ -137,6 +168,75 @@ local function run()
     oKnob.increase(0); check(oKnob.getValue() == 1.5, "Explicit zero multiplier does not move.");
     oKnob.setRate(-100); check(oKnob.getRate() == 4, "Rate is a magnitude capped to the span.");
     oKnob.setValue(1000000000); check(oKnob.getValue() >= -2 and oKnob.getValue() <= 2, "Large overshoot normalizes without recursive wrapping.");
+
+    -- Completion is a gesture boundary, distinct from continuous value changes.
+    local nCompleted, nCompletionEvents, tCompletion = 0, 0;
+    local oCompletion = fCreate("knob", {Min = 0, Max = 100, Value = 50,
+        OnChangeComplete = function(nFinal, oSender)
+            check(nFinal == oSender.getValue(), "Completion callback receives final value and public sender.");
+            nCompleted = nCompleted + 1;
+        end}, 350, 20, 180, 180);
+    oCompletion.on("changeComplete", function(_, tEvent) nCompletionEvents = nCompletionEvents + 1; tCompletion = tEvent; end);
+    oCompletion.setValue(60, true); oCompletion.increase(1, true);
+    check(nCompleted == 0 and nCompletionEvents == 0, "Programmatic changes never synthesize completion.");
+    oCompletion.handlePointer("down", 90, 90); oCompletion.handlePointer("up", 90, 90);
+    check(nCompleted == 0, "A knob click without a value change does not complete.");
+    local nDragStart = oCompletion.getValue();
+    oCompletion.handlePointer("down", 90, 90); oCompletion.handlePointer("move", 90, 80);
+    oCompletion.handlePointer("move", 90, 70);
+    check(nCompleted == 0, "Dragging emits no premature completion.");
+    oCompletion.handlePointer("up", -20, -20);
+    check(nCompleted == 1 and nCompletionEvents == 1 and tCompletion.Input == "pointer"
+        and tCompletion.OldValue == nDragStart and not oCompletion.Control:HasCapture(),
+        "Release outside the knob completes a changed captured drag once.");
+    oCompletion.handlePointer("up", 90, 90);
+    check(nCompleted == 1, "Duplicate mouse releases cannot repeat completion.");
+    nDragStart = oCompletion.getValue();
+    oCompletion.handlePointer("down", 90, 90); oCompletion.handlePointer("move", 90, 80);
+    oCompletion.handleKey("down", _wx.WXK_ESCAPE);
+    check(nCompleted == 1 and oCompletion.getValue() == nDragStart, "Escape restores a drag without completion.");
+    oCompletion.handleKey("down", _wx.WXK_LEFT); oCompletion.handleKey("down", _wx.WXK_LEFT);
+    oCompletion.handleKey("down", _wx.WXK_RIGHT);
+    oCompletion.handleKey("up", _wx.WXK_LEFT);
+    check(nCompleted == 1, "Keyboard auto-repeat waits for every held adjustment key.");
+    local oRelease = _wx.wxKeyEvent(_wx.wxEVT_KEY_UP);
+    oRelease.GetKeyCode = function() return _wx.WXK_RIGHT; end;
+    oRelease:SetId(oCompletion.Control:GetId()); oRelease:SetEventObject(oCompletion.Control);
+    oCompletion.Control:GetEventHandler():ProcessEvent(oRelease); oRelease:delete();
+    check(nCompleted == 2 and nCompletionEvents == 2 and tCompletion.Input == "keyboard",
+        "Native final key release completes one keyboard gesture.");
+    oCompletion.setValue(100);
+    oCompletion.handleKey("down", _wx.WXK_RIGHT); oCompletion.handleKey("up", _wx.WXK_RIGHT);
+    check(nCompleted == 2, "Clamped key input without an effective change does not complete.");
+    oCompletion.setValue(50);
+    oCompletion.wheel(1); oCompletion.wheel(1);
+    check(nCompleted == 2, "Wheel completion waits for idle rather than each native wheel event.");
+    dispatch(oFrame, 260);
+    check(nCompleted == 3 and nCompletionEvents == 3 and tCompletion.Input == "wheel" and tCompletion.OldValue == 50,
+        "A wheel burst completes once after its idle timer.");
+    oCompletion.wheel(1); oCompletion.setEnabled(false); oCompletion.setEnabled(true);
+    dispatch(oFrame, 260); check(nCompleted == 3, "Disabling cancels a pending wheel completion.");
+    oCompletion.wheel(1); oCompletion.setValue(30);
+    dispatch(oFrame, 260); check(nCompleted == 3, "Authoritative programmatic values cancel pending completion.");
+    oCompletion.handlePointer("down", 90, 90); oCompletion.handlePointer("move", 90, 80); oCompletion.cancel();
+    oCompletion.handlePointer("up", 90, 80);
+    check(nCompleted == 3, "Capture cancellation suppresses drag completion.");
+    oCompletion.setValue(30);
+    oCompletion.handlePointer("down", 90, 90); oCompletion.handlePointer("move", 90, 80);
+    oCompletion.handlePointer("move", 90, 90); oCompletion.handlePointer("up", 90, 90);
+    check(nCompleted == 4 and math.abs(tCompletion.Value - tCompletion.OldValue) < 1e-9,
+        "Moving away and back still completes a changed gesture.");
+    local oPendingKnob = _Luma.Controls.knob(oFrame, {Skin = oSkin, Value = 50,
+        OnChangeComplete = function() error("Disposed wheel gesture completed."); end});
+    oPendingKnob.wheel(1); oPendingKnob.destroy();
+    dispatch(oFrame, 260);
+    check(oPendingKnob.Disposed, "Disposal releases a pending wheel timer without completion.");
+    local oRetiringKnob = _Luma.Controls.knob(oFrame, {Skin = oSkin, Value = 50});
+    oRetiringKnob.layout(350, 20, 180, 180);
+    oRetiringKnob.on("changeComplete", function() oRetiringKnob.destroy(); end);
+    oRetiringKnob.handlePointer("down", 90, 90); oRetiringKnob.handlePointer("move", 90, 80);
+    check(pcall(oRetiringKnob.handlePointer, "up", 90, 80) and oRetiringKnob.Disposed,
+        "Completion listeners may dispose a knob without touching a deleted timer.");
 
     check(_Date.days(2000, 2) == 29 and _Date.days(1900, 2) == 28, "Gregorian century leap-year rules.");
     check(_Date.weekday(2024, 2, 29) == 4, "Gregorian calendar weekday is independent of local timezone.");

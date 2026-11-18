@@ -280,7 +280,9 @@ function Tabs.create(oParent, tOptions)
                 end);
                 tPages[tItem.Id] = oPage;
             end
-            tPages[tItem.Id]:Enable(oComponent.isEnabled());
+            -- Ancestors disable their descendants natively. A rebuild must not
+            -- turn that temporary inherited state into a permanent page flag.
+            tPages[tItem.Id]:Enable(oComponent.Control:IsThisEnabled());
             oComponent.Items[nIndex] = tItem.Text;
             oComponent.Pages[nIndex] = tPages[tItem.Id];
             if (tItem.Id == sOldId and tItem.Enabled) then

@@ -10,6 +10,7 @@ local _wx       = require("wx");
 local _Controls = require("wxLuma.Controls");
 local _nChecks  = 0;
 local _tFixtures = {};
+local _bShowcase = arg and arg[2] == "--showcase";
 _wx.wxGetApp():SetExitOnFrameDelete(false);
 
 --[[!
@@ -72,18 +73,17 @@ end
     exercises the workbench's mutation buttons and minimum-size layout.
 !]]
 local function run()
-    local pRed = APP_PATH.."/Tests/ListEx-red-fixture.png";
-    local pGreen = APP_PATH.."/Tests/ListEx-green-fixture.png";
+    -- Reserve temporary files instead of writing into the repository or
+    -- colliding with leftovers from a previous interrupted run.
+    local pRed, pGreen = os.tmpname(), os.tmpname();
+    _tFixtures[#_tFixtures + 1] = pRed; _tFixtures[#_tFixtures + 1] = pGreen;
 
     for nIndex, pPath in ipairs({pRed, pGreen}) do
-        local hExisting = io.open(pPath, "rb");
-        assert(not hExisting, "Refusing to overwrite existing fixture.");
         local oSolid = _wx.wxImage(40, 20);
         oSolid:SetRGB(_wx.wxRect(0, 0, 40, 20), nIndex == 1 and 240 or 20,
             nIndex == 1 and 30 or 230, 20);
         assert(oSolid:SaveFile(pPath, _wx.wxBITMAP_TYPE_PNG));
         oSolid:delete();
-        _tFixtures[#_tFixtures + 1] = pPath;
     end
 
     local oFrame = _wx.wxFrame(_wx.NULL, _wx.wxID_ANY, "ListEx regression",
@@ -144,6 +144,26 @@ local function run()
     check(not pcall(oList.setCell, 1, 9, "bad"), "Reject absent columns.");
     check(not pcall(oList.setItems, {{Name = "bad", Level = 0 / 0}}), "Reject invalid replacement atomically.");
     check(#oList.Items == 3 and oList.getValue() == 1, "Rejected replacement preserves existing rows and selection.");
+    check(not pcall(oList.setItems, {[2] = {Name = "lost"}}, true)
+        and #oList.Items == 3 and oList.getValue() == 1 and nSelections == 0,
+        "Sparse typed-list replacements cannot discard rows, selection or notify.");
+    check(not pcall(oList.setItems, {Named = {Name = "lost"}}) and #oList.Items == 3,
+        "Typed-list replacement rejects non-array keys.");
+    local tSparseColumns = {{Key = "First"}, {Key = "Missing"}, {Key = "Last"}}; tSparseColumns[2] = nil;
+    check(not pcall(_Controls.listEx, oFrame, {Skin = oSkin, Columns = tSparseColumns, Items = {}}),
+        "Typed-list construction rejects a missing middle column.");
+    check(not pcall(_Controls.listEx, oFrame, {Skin = oSkin, Columns = {{Key = "Name"}, Named = {Key = "Hidden"}}, Items = {}}),
+        "Typed-list column definitions reject non-array keys.");
+    check(not pcall(_Controls.listEx, oFrame, {Skin = oSkin, Columns = {{Key = "Name"}}, Items = {[2] = {Name = "lost"}}}),
+        "Typed-list construction rejects sparse initial rows.");
+    local oPlain = _Controls.list(oFrame, {Skin = oSkin, Items = {"First", "Second"}, Value = 2});
+    check(not pcall(oPlain.setItems, {[2] = "lost"}) and #oPlain.Items == 2 and oPlain.getValue() == 2,
+        "Plain-list replacement retains rows and selection after sparse input.");
+    check(not pcall(oPlain.setItems, {Named = "lost"}) and #oPlain.Items == 2,
+        "Plain-list replacement rejects non-array keys.");
+    check(not pcall(_Controls.list, oFrame, {Skin = oSkin, Items = {[2] = "lost"}}),
+        "Plain-list construction rejects sparse initial rows.");
+    oPlain.destroy();
 
     local oRed = pixels(oList, 700, 210);
     check(oRed:GetRed(30, 30) == 240 and oRed:GetGreen(30, 30) == 30, "Image cell renders source pixels.");
@@ -250,6 +270,8 @@ local function run()
     _wx.wxYield();
     oSkin.destroy();
 
+    -- The complete native control checks run without opening the gallery.
+    if (not _bShowcase) then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Gallery.show("ListExUpdate", true);
     tWorkbench.Layout();

@@ -381,8 +381,10 @@ local function run()
 
     oPreviewDC:SelectObject(_wx.wxNullBitmap);
     local oPreviewImage = oPreview:ConvertToImage();
-    check(oPreviewImage:SaveFile(APP_PATH.."/Tests/ProgressReservePreview.png", _wx.wxBITMAP_TYPE_PNG),
-        "production skin preview saved");
+    if (arg[2] == "--showcase") then
+        check(oPreviewImage:SaveFile(APP_PATH.."/Tests/ProgressReservePreview.png", _wx.wxBITMAP_TYPE_PNG),
+            "production skin preview saved");
+    end
     oPreviewImage:delete();
     oPreviewDC:delete();
     oBackground:delete();
@@ -395,6 +397,8 @@ local function run()
     end
 
     oRealSkin.destroy();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     tWorkbench.Gallery.show("OrbReserved", true);
     tWorkbench.Layout();

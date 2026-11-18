@@ -93,13 +93,14 @@ function Dropdown.create(oParent, tOptions)
 
     --[[!
     @fqxn wxLuma.UI.Dropdown.setItems
-    @desc Closes without committing, replaces list items and adopts its clamped selection without notifying.
+    @desc Validates/replaces list items, then closes without committing and adopts
+        the clamped selection silently. Rejected items preserve an open popup.
     @param table tItems An array of strings.
     @ret table oComponent This public component object.
     !]]
     function oComponent.setItems(tItems)
-        oComponent.close(false, false);
         oComponent.List.setItems(tItems);
+        oComponent.close(false, false);
         oComponent.Value = oComponent.List.getValue();
         oComponent.refresh();
         return oComponent;

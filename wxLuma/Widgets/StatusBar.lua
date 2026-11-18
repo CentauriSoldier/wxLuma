@@ -226,7 +226,9 @@ function StatusBar.create(oParent, tOptions)
                         _wx.wxDefaultPosition, _wx.wxDefaultSize, _wx.wxTAB_TRAVERSAL);
                     oHost:SetBackgroundStyle(_wx.wxBG_STYLE_PAINT);
                     oHost:SetBackgroundColour(tArt.color(oComponent.isEnabled() and "Section Normal" or "Section Disabled"));
-                    oHost:Enable(oComponent.isEnabled());
+                    -- Store the bar's local policy; ancestors already provide
+                    -- temporary inherited disabling for the host and its children.
+                    oHost:Enable(oComponent.Control:IsThisEnabled());
                     oHost:Connect(_wx.wxEVT_PAINT, function()
                         -- Always validate the native paint region, even after
                         -- resource disposal while the parent still owns this host.

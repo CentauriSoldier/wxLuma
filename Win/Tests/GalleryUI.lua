@@ -919,13 +919,18 @@ return function(oParent)
         tWidgets.StatusProgress.layout(4, 3, math.max(1, nWidth - 8), math.max(1, nHeight - 6));
         jEvent:Skip();
     end);
-    fRemember("ColorPicker", Controls.colorPicker(fDemoParent("ColorPicker", oTools), fOptions({Value = {R = 65, G = 140, B = 210, A = 190},
+    fRemember("ColorPicker", Controls.colorPicker(fDemoParent("ColorPicker", oTools), fOptions({Layout = "square", Value = {R = 65, G = 140, B = 210, A = 190},
         OnChange = function(tColor)
             local sHex = string.format("#%02X%02X%02X%02X", tColor.R, tColor.G, tColor.B, tColor.A);
             tWidgets.StatusBar.setItem("color", {Text = sHex}, true);
             fMessage("Color: "..sHex);
         end})));
-    fRemember("ColorPickerAlpha", Controls.colorPicker(fDemoParent("ColorPickerAlpha", oTools), fOptions({Value = {R = 210, G = 90, B = 65, A = 100}})));
+    fRemember("ColorPickerAlpha", Controls.colorPicker(fDemoParent("ColorPickerAlpha", oTools), fOptions({Layout = "wheel", Value = {R = 210, G = 90, B = 65, A = 100}})));
+    fRemember("ColorPickerLayout", Controls.dropdown(fDemoParent("ColorPickerLayout", oTools), fOptions({
+        Items = {"Layout: sliders", "Layout: square", "Layout: wheel"}, Value = 2,
+        OnChange = function(nIndex)
+            tWidgets.ColorPicker.setLayout(({"sliders", "square", "wheel"})[nIndex], true);
+        end})));
     fRemember("ToolbarAdd", Controls.button(fDemoParent("ToolbarAdd", oTools), fOptions({Text = "Add command",
         OnClick = function()
             local tItems = tWidgets.Toolbar.getItems();
@@ -1122,7 +1127,8 @@ return function(oParent)
     for nIndex, sMode in ipairs({"none", "revolve", "alternate"}) do
         local sKey = ({"Knob", "KnobWrap", "KnobBounce"})[nIndex];
         fRemember(sKey, Controls.knob(fDemoParent(sKey, oInput), fOptions({Min = 0, Max = 100,
-            Value = 95, Rate = 10, Continuity = sMode, OnChange = fChanged("Knob "..sMode)})));
+            Value = 95, Rate = 10, Continuity = sMode, OnChange = fChanged("Knob "..sMode),
+            OnChangeComplete = fChanged("Knob complete "..sMode)})));
     end
     for _, tAction in ipairs({{"KnobIncrease", "Increase all", "increase"}, {"KnobDecrease", "Decrease all", "decrease"}}) do
         fRemember(tAction[1], Controls.button(fDemoParent(tAction[1], oInput), fOptions({Text = tAction[2], OnClick = function()

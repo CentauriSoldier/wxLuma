@@ -228,6 +228,24 @@ local function run()
     check(math.abs(tZoom.XMax - tZoom.XMin - (tView.XMax - tView.XMin) / 2) < 1e-9 and nView == 1, "Zoom changes ranges and emits viewChanged.");
     oChart.pan(1, 2); local tPan = oChart.getViewRange();
     check(math.abs(tPan.XMin - tZoom.XMin - 1) < 1e-9 and math.abs(tPan.YMin - tZoom.YMin - 2) < 1e-9, "Panning uses explicit data coordinates.");
+    -- Tooltip options store local intent independently of ancestor availability.
+    _oFrame:Enable(false); oChart.setTooltips(false); oChart.setTooltips(true);
+    check(oChart.Tooltip.Enabled and not oChart.Tooltip.isEnabled(), "Chart tooltip policy survives option changes under a disabled parent.");
+    _oFrame:Enable(true);
+    check(oChart.Tooltip.isEnabled(), "Chart tooltips become available when the parent is enabled.");
+    _oFrame:Enable(false); oChart.setEnabled(false); oChart.setTooltips(false); oChart.setTooltips(true);
+    _oFrame:Enable(true);
+    check(not oChart.Tooltip.Enabled, "Chart option changes preserve the chart's explicit disabled policy.");
+    oChart.setEnabled(true);
+
+    -- User shortcuts obey zoom policy; direct programmatic view changes remain available.
+    oChart.setZoomEnabled(false);
+    local tBeforeHome = oChart.getViewRange();
+    check(not oChart.handleKey("down", _wx.WXK_HOME) and _Options.same(tBeforeHome, oChart.getViewRange()),
+        "Home preserves chart ranges when user zoom is disabled.");
+    oChart.setZoomEnabled(true);
+    check(oChart.handleKey("down", _wx.WXK_HOME) and oChart.getXRange() == false and oChart.getYRange() == false,
+        "Home resets chart ranges when user zoom is enabled.");
     oChart.resetView(); local nPX, nPY = oChart.getPointPosition("a", "q"); local tPointHit = oChart.hitTest(nPX, nPY);
     check(tPointHit and tPointHit.Series == "a" and tPointHit.Point == "q", "Point geometry and hit testing agree.");
     local nClicked, nPointHover = 0, 0;

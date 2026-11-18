@@ -111,6 +111,21 @@ local function run()
     local oReadOnly = _Controls.numericField(oFrame, {Skin = oSkin, ReadOnly = true, Value = 42.5});
     oReadOnly.layout(20, 200, 220, 40);
     oFrame:Show(true);
+    -- A valid target configuration may be incompatible with every intermediate
+    -- precision/range update; restoration must apply the coupled settings first.
+    local oStateNumber = _Controls.numericField(oFrame, {Skin = oSkin, Min = 0.001, Max = 0.002,
+        Precision = 3, Step = 0.001, Value = 0.001});
+    local tFineState = oStateNumber.getObjectState();
+    oStateNumber.setNumericSettings(1e10, 1e11, 0, 1);
+    local tCoarseState = oStateNumber.getObjectState();
+    check(pcall(oStateNumber.setObjectState, tFineState) and oStateNumber.getPrecision() == 3
+        and oStateNumber.getValue() == 0.001, "Numeric state restores fine precision and small ranges together.");
+    check(pcall(oStateNumber.setObjectState, tCoarseState) and oStateNumber.getPrecision() == 0
+        and oStateNumber.getValue() == 1e10, "Numeric state restores large ranges and coarse precision together.");
+    check(not pcall(oStateNumber.setNumericSettings, 1e10, 1e11, 10, 0.001)
+        and oStateNumber.getPrecision() == 0 and oStateNumber.getValue() == 1e10,
+        "Rejected aggregate numeric settings preserve the original configuration and value.");
+    oStateNumber.destroy();
     _wx.wxYield();
     check(next(oToggle) == nil and getmetatable(oToggle) == "wxLuma.UI.ToggleButton", "Toggle decoy identity.");
     check(next(oNumber) == nil and getmetatable(oNumber) == "wxLuma.UI.NumericField", "Numeric decoy identity.");
@@ -377,7 +392,9 @@ local function run()
     oDC:SelectObject(_wx.wxNullBitmap);
     local oImage = oBitmap:ConvertToImage();
     check(oImage:IsOk(), "Production skin rendering succeeded.");
-    oImage:SaveFile(APP_PATH.."/Tests/EditorsDialogPreview.png", _wx.wxBITMAP_TYPE_PNG);
+    if (arg[2] == "--showcase") then
+        assert(oImage:SaveFile(APP_PATH.."/Tests/EditorsDialogPreview.png", _wx.wxBITMAP_TYPE_PNG));
+    end
     oImage:delete();
     oDC:delete();
     oBitmap:delete();
@@ -393,6 +410,8 @@ local function run()
     oFrame:Destroy();
     _wx.wxYield();
     oSkin.destroy();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tWorkbench = require("Tests.GalleryUI")(_wx.NULL);
     check(#tWorkbench.Widgets.Tabs.Pages == #tWorkbench.Gallery.Categories, "Every gallery category has a tab.");
     tWorkbench.Gallery.show("Dialog", true);

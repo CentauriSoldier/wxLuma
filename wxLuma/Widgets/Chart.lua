@@ -140,7 +140,9 @@ function Chart.create(oParent, tOptions)
         local bOpacityOnly = true;
         for _, tChange in ipairs(tChanges) do if (tChange.Property ~= "AreaOpacity") then bOpacityOnly = false; break; end end
         fInvalidate(bOpacityOnly);
-        if (oTooltip) then oTooltip.setEnabled(tSettings.Tooltips and oComponent.isEnabled()); end
+        -- Keep tooltip policy independent of temporary ancestor disabling.
+        -- Tooltip.show still checks the target's effective availability.
+        if (oTooltip) then oTooltip.setEnabled(tSettings.Tooltips and oComponent.Control:IsThisEnabled()); end
         for _, tChange in ipairs(tChanges) do
             if (tChange.Property == "MaxPoints" and oComponent.setSeries) then oComponent.setSeries(tSeries, bNotify); end
             if (bNotify and (tChange.Property == "XRange" or tChange.Property == "YRange")) then
@@ -1126,7 +1128,9 @@ function Chart.create(oParent, tOptions)
     end;
     oComponent.key = function(nKey)
         if (nKey == _wx.WXK_ESCAPE) then oComponent.setValue(nil, true);
-        elseif (nKey == _wx.WXK_HOME) then oComponent.resetView(true);
+        elseif (nKey == _wx.WXK_HOME) then
+            if (not tSettings.ZoomEnabled) then return false; end
+            oComponent.resetView(true);
         elseif (nKey == _wx.WXK_ADD or nKey == string.byte("+")) then if (tSettings.ZoomEnabled) then oComponent.zoom(1 / tSettings.ZoomFactor, nil, nil, true); end
         elseif (nKey == _wx.WXK_SUBTRACT or nKey == string.byte("-")) then if (tSettings.ZoomEnabled) then oComponent.zoom(tSettings.ZoomFactor, nil, nil, true); end
         elseif (nKey == _wx.WXK_LEFT or nKey == _wx.WXK_RIGHT) then

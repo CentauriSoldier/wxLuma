@@ -1,5 +1,6 @@
 local _wx             = require("wx");
 local _finite         = require("wxLuma.Core.ControlNumeric").finite;
+local _Options        = require("wxLuma.Core.ControlOptions");
 local ListRowRenderer = {};
 
 --[[!
@@ -13,6 +14,9 @@ local ListRowRenderer = {};
 !]]
 function ListRowRenderer.create(tDefinitions, oSkin)
     assert(type(tDefinitions) == "table" and #tDefinitions > 0, "List Columns must be a nonempty array.");
+    -- A missing middle column would otherwise change the meaning of every
+    -- remaining cell while appearing to be a successful construction.
+    _Options.array(tDefinitions);
     local tColumns, tCache, tOrder = {}, {}, {};
 
     for nIndex, tDefinition in ipairs(tDefinitions) do

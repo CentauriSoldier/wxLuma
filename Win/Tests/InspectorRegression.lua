@@ -72,6 +72,51 @@ end
 !]]
 local function run()
     _Frame:Show(true);
+    -- Invalid numeric factories must fail without leaving native children behind.
+    for _, sFactory in ipairs({"slider", "spinner"}) do
+        local nChildren = _Frame:GetChildren():GetCount();
+        check(not pcall(create, sFactory, {Min = -1e308, Max = 1e308, Step = 1, Value = 0}),
+            "Numeric factories reject overflowing spans: "..sFactory);
+        check(not pcall(create, sFactory, {Min = 0, Max = 1, Step = 1e-320, Value = 0}),
+            "Numeric factories reject overflowing step counts: "..sFactory);
+        check(not pcall(create, sFactory, {Min = 0, Max = 10, Step = 1, Value = false})
+            and _Frame:GetChildren():GetCount() == nChildren, "Rejected numeric factories create no native children: "..sFactory);
+        local oLarge = create(sFactory, {Min = 0, Max = 1e308, Step = 1e308, Value = 0});
+        check(oLarge.handleKey("down", _wx.WXK_PAGEUP) and oLarge.getValue() == 1e308,
+            "Large numeric page increments saturate without overflow: "..sFactory);
+        check(oLarge.handleKey("down", _wx.WXK_PAGEDOWN) and oLarge.getValue() == 0,
+            "Large numeric page decrements saturate without overflow: "..sFactory);
+    end
+    local oFractional = create("slider", {Min = -1, Max = 1, Step = 0.25, Value = 0.36});
+    check(oFractional.getValue() == 0.25, "Ordinary fractional numeric snapping is preserved.");
+    local oOversizedStep = create("slider", {Min = 0, Max = 1e-300, Step = 1e308, Value = 1e-300});
+    check(oOversizedStep.getValue() == 0, "An oversized step still snaps to Min when the step ratio underflows.");
+    local oRoundedLimit = create("slider", {Min = 0, Max = 1.7e308, Step = 1e308, Value = 1.7e308});
+    check(oRoundedLimit.getValue() == 1.7e308, "A rounded step beyond Max clamps before multiplication overflows.");
+
+    local nNumericChildren = _Frame:GetChildren():GetCount();
+    check(not pcall(create, "scrollbar", {Min = -1e308, Max = 1e308, Page = 1, Value = 0})
+        and not pcall(create, "scrollbar", {Min = 0, Max = 10, Page = 1, Value = 0, Step = false})
+        and _Frame:GetChildren():GetCount() == nNumericChildren, "Invalid scrollbar geometry fails before native creation.");
+    local oLargeScroll = create("scrollbar", {Min = 0, Max = 1e308, Page = 1e308, Step = 1e308, Value = 5e307});
+    local nThumbAt, nThumbSize, nThumbTravel = oLargeScroll.getThumb();
+    check(nThumbAt == 18 + math.floor(nThumbTravel / 2) and nThumbSize > 18,
+        "Large scrollbar geometry preserves proportional thumb size and position.");
+    oLargeScroll.handleKey("down", _wx.WXK_PAGEDOWN);
+    check(oLargeScroll.getValue() == 1e308, "Large scrollbar paging clamps without addition overflow.");
+    oLargeScroll.wheel(1);
+    check(oLargeScroll.getValue() == 0, "Large scrollbar wheel movement clamps before multiplication overflow.");
+    check(not pcall(oLargeScroll.setRange, -1e308, 1e308, 1) and oLargeScroll.Min == 0 and oLargeScroll.Max == 1e308,
+        "Rejected scrollbar ranges preserve existing bounds.");
+    check(not pcall(_Controls.tooltip, _Frame, {Skin = _Skin, Text = "invalid", Delay = false})
+        and not pcall(_Controls.tooltip, _Frame, {Skin = _Skin, Text = "invalid", Delay = 2147483648}),
+        "Tooltip delays reject invalid native timer intervals before creation.");
+    local oZeroTarget = create("label", {Value = "Immediate tooltip"});
+    local oZeroTooltip = _Controls.tooltip(oZeroTarget, {Skin = _Skin, Text = "Immediate", Delay = 0});
+    mouse(oZeroTarget.Control, _wx.wxEVT_ENTER_WINDOW, 1, 1);
+    check(oZeroTooltip.isShown(), "Zero-delay tooltips display immediately without starting a zero-interval timer.");
+    oZeroTooltip.destroy();
+
     local nSearch, nChange = 0, 0;
     local oSearch = create("searchField", {OnSearch = function() nSearch = nSearch + 1; end,
         OnChange = function() nChange = nChange + 1; end});
@@ -91,6 +136,38 @@ local function run()
     dispatchTimers(); check(nDelayed == 1, "Silent binding cancels stale debounce.");
     oDelayed.setValue("disabled", true); oDelayed.setEnabled(false);
     dispatchTimers(); check(nDelayed == 1, "Disabling cancels debounce.");
+
+    -- A failed setter must not cancel a valid request queued by the user.
+    oDelayed.setEnabled(true); oDelayed.setValue("still pending", true);
+    check(not pcall(oDelayed.setValue, 123) and oDelayed.getValue() == "still pending", "Invalid search values preserve current text.");
+    dispatchTimers(); check(nDelayed == 2, "Rejected search text preserves the pending debounce request.");
+    check(not pcall(create, "searchField", {Debounce = 2147483648})
+        and not pcall(create, "searchField", {Debounce = false})
+        and not pcall(create, "searchField", {Debounce = -1}), "Search debounce rejects nonnumeric and out-of-native-range values before construction.");
+    local oMaximumDelay = create("searchField", {Debounce = 2147483647});
+    check(oMaximumDelay.getValue() == "", "The largest native timer interval is accepted without starting a timer.");
+    local oDisposedSearch = _Controls.searchField(_Frame, {Skin = _Skin, Debounce = 20});
+    oDisposedSearch.destroy();
+    check(oDisposedSearch.search() == false and not pcall(oDisposedSearch.setValue, "retired"),
+        "Disposed search methods do not touch deleted native timers.");
+
+    -- Value callbacks may retire an editor before its timer or search hooks run.
+    local nRetiredSearches = 0;
+    local oRetiredSearch = _Controls.searchField(_Frame, {Skin = _Skin, Debounce = 20,
+        OnSearch = function() nRetiredSearches = nRetiredSearches + 1; end});
+    oRetiredSearch.on("valueChanged", function() oRetiredSearch.destroy(); end);
+    check(pcall(oRetiredSearch.setValue, "retire", true) and oRetiredSearch.Disposed,
+        "Disposing a search from valueChanged does not touch its deleted timer.");
+    dispatchTimers(); check(nRetiredSearches == 0, "Retired searches never deliver delayed requests.");
+    local oDisabledSearch = create("searchField", {Debounce = 20,
+        OnSearch = function() nRetiredSearches = nRetiredSearches + 1; end});
+    oDisabledSearch.on("valueChanged", function() oDisabledSearch.setEnabled(false); end);
+    oDisabledSearch.setValue("disable", true); oDisabledSearch.setEnabled(true);
+    dispatchTimers(); check(nRetiredSearches == 0, "Disabling within valueChanged prevents stale debounce scheduling.");
+    local oActionSearch = _Controls.searchField(_Frame, {Skin = _Skin, Value = "clear me"});
+    oActionSearch.on("valueChanged", function() oActionSearch.destroy(); end);
+    check(pcall(oActionSearch.onAction) and oActionSearch.Disposed,
+        "Clearing from the search action tolerates callback disposal before restoring focus.");
 
     local oCombo = create("comboBox", {Items = {"Alpha", "Beta"}, Value = "free"});
     check(oCombo.getValue() == "free" and oCombo.getSelection() == 0, "Combo allows free text.");
@@ -186,6 +263,14 @@ local function run()
     check(oMenus.getMenus()[1].Items[1].Text == "Open", "Menu descriptors are copied.");
     check(oMenus.open("file"), "Menu opens before disable."); oMenus.setEnabled(false);
     check(not oMenus.isOpen() and not oMenus.open("file"), "Disabling dismisses menu."); oMenus.setEnabled(true);
+    _Frame:Enable(false); oMenus.setMenus(oMenus.getMenus()); _Frame:Enable(true);
+    check(oMenus.isEnabled() and oMenus.getMenu("file").isEnabled() and not oMenus.getMenu("disabled").isEnabled(),
+        "Rebuilding menus under a disabled ancestor retains bar and heading policies.");
+    check(oMenus.open("file"), "Rebuilt menu opens after its ancestor is re-enabled."); oMenus.close();
+    _Frame:Enable(false); oMenus.setEnabled(false); oMenus.setMenus(oMenus.getMenus()); _Frame:Enable(true);
+    check(not oMenus.isEnabled() and not oMenus.getMenu("file").isEnabled(),
+        "Explicitly disabled menu bar stays disabled after ancestor re-enable.");
+    oMenus.setEnabled(true);
 
     local oPanel = create("collapsiblePanel", {Text = "Details", Expanded = false, ContentHeight = 90});
     check(not oPanel.isExpanded() and oPanel.getBestHeight() == 36, "Collapsed panel height.");
@@ -221,6 +306,15 @@ local function run()
     oGrid.setReadOnly("readonly", false); check(oGrid.getEditor("readonly").isEnabled(), "Read-only policy change.");
     oGrid.setReadOnly("readonly", true); oGrid.setEnabled(false); oGrid.setEnabled(true);
     check(not oGrid.getEditor("readonly").isEnabled() and oGrid.getEditor("text").isEnabled(), "Grid reenable preserves row policy.");
+    _Frame:Enable(false); oGrid.setReadOnly("text", true); _Frame:Enable(true);
+    check(not oGrid.getEditor("text").isEnabled(), "Read-only applied under a disabled ancestor survives ancestor re-enable.");
+    _Frame:Enable(false); oGrid.setReadOnly("text", false); _Frame:Enable(true);
+    check(oGrid.getEditor("text").isEnabled() and oGrid.getValue("text") == "native",
+        "Editable policy restored under a disabled ancestor survives re-enable without losing data.");
+    _Frame:Enable(false); oGrid.setEnabled(false); oGrid.setReadOnly("readonly", false); _Frame:Enable(true);
+    check(not oGrid.isEnabled() and not oGrid.getEditor("readonly").isEnabled(),
+        "Editable row policy cannot re-enable an explicitly disabled property grid.");
+    oGrid.setEnabled(true); oGrid.setReadOnly("readonly", true);
 
     -- Every new component must retain the same public event identity and artwork states.
     for _, oObject in ipairs(_tObjects) do

@@ -20,6 +20,7 @@ function Slider.create(oParent, tOptions)
     tOptions = _Theme.options(tOptions, oParent);
     tOptions = _Border.withDefault(tOptions, _wx.wxBORDER_NONE);
     assert(tOptions.FocusBorder == nil or type(tOptions.FocusBorder) == "boolean", "FocusBorder must be boolean.");
+    _ControlNumeric.validateOptions(tOptions, false);
     return _ControlInput.create(oParent, tOptions, "Slider", function(oComponent, tInput)
         local oSkin = tOptions.Skin;
         -- Focus retains keyboard ownership without adding an outer rectangle.
@@ -32,6 +33,7 @@ function Slider.create(oParent, tOptions)
             local nMargin = _Theme.isTheme(oSkin) and oSkin.getName() == "System" and oComponent.Control:FromDIP(16) or 16;
             local nFraction       = oComponent.Vertical and 1 - (nY - nMargin) / math.max(1, nHeight - nMargin * 2)
             or (nX - nMargin) / math.max(1, nWidth - nMargin * 2);
+            nFraction = math.max(0, math.min(1, nFraction));
             oComponent.setValue(oComponent.Min + nFraction * (oComponent.Max - oComponent.Min), true);
         end;
 

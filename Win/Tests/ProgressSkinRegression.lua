@@ -238,7 +238,9 @@ local function run()
     oDC:SetDeviceOrigin(0, 0);
     oDC:SelectObject(_wx.wxNullBitmap);
     oImage = oPreview:ConvertToImage();
-    check(oImage:SaveFile(APP_PATH.."/Tests/ProgressSkinPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save render preview.");
+    if (arg[2] == "--showcase") then
+        check(oImage:SaveFile(APP_PATH.."/Tests/ProgressSkinPreview.png", _wx.wxBITMAP_TYPE_PNG), "Save render preview.");
+    end
     oImage:delete();
     oDC:delete();
     oPreview:delete();

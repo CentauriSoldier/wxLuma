@@ -4,6 +4,7 @@ local _wx             = require("wx");
 local _ControlSurface = require("wxLuma.Core.ControlSurface");
 local _ControlEvents  = require("wxLuma.Core.ControlEvents");
 local _Selection      = require("wxLuma.Core.ControlSelection");
+local _Options        = require("wxLuma.Core.ControlOptions");
 local Table           = {};
 
 --[[!
@@ -20,6 +21,7 @@ local Table           = {};
 function Table.create(oParent, tOptions)
     tOptions = _Theme.options(tOptions, oParent);
     assert(type(tOptions.Columns) == "table" and #tOptions.Columns > 0, "Table requires Columns.");
+    _Options.array(tOptions.Columns);
     local tColumns = {};
 
     for nIndex, tColumn in ipairs(tOptions.Columns) do
@@ -32,13 +34,15 @@ function Table.create(oParent, tOptions)
 
     -- Own structural copies so caller edits cannot desynchronize native rows.
     local function fRows(tItems)
-        assert(type(tItems) == "table", "Table Items must be an array.");
+        -- Reject holes/extra keys before copying or replacing native rows.
+        _Options.array(tItems);
         local tRows, tIds = {}, {};
 
         for nIndex, tRow in ipairs(tItems) do
             assert(type(tRow) == "table" and type(tRow.Id) == "string" and tRow.Id ~= ""
                 and not tIds[tRow.Id] and type(tRow.Cells) == "table", "Invalid/duplicate table row.");
             assert(#tRow.Cells == #tColumns, "Row cell count must match Columns.");
+            _Options.array(tRow.Cells);
             local tCells = {};
 
             for nColumn = 1, #tColumns do
@@ -53,7 +57,9 @@ function Table.create(oParent, tOptions)
         return tRows, tIds;
     end
 
-    local tRows, tIndices = fRows(tOptions.Items or {});
+    local tInitial = tOptions.Items;
+    if (tInitial == nil) then tInitial = {}; end
+    local tRows, tIndices = fRows(tInitial);
     assert(tOptions.Value == nil or tIndices[tOptions.Value], "Unknown initial table selection.");
     assert(tOptions.MultiSelect == nil or type(tOptions.MultiSelect) == "boolean", "MultiSelect must be boolean.");
     local bMulti = tOptions.MultiSelect == true;

@@ -3,6 +3,7 @@ local _Theme = require("wxLuma.Core.ControlTheme");
 local _wx             = require("wx");
 local _ControlSurface = require("wxLuma.Core.ControlSurface");
 local _ControlEvents  = require("wxLuma.Core.ControlEvents");
+local _Options        = require("wxLuma.Core.ControlOptions");
 local Tree            = {};
 
 --[[!
@@ -21,7 +22,9 @@ function Tree.create(oParent, tOptions)
 
     -- Validate the entire initial hierarchy before allocating native resources.
     local function fValidate(tItems, sParent)
-        assert(type(tItems) == "table", "Tree Items/Children must be tables.");
+        -- Every level must be dense before its nodes are copied. A hole in a
+        -- nested Children array must not discard the remaining branch silently.
+        _Options.array(tItems);
         assert(not tVisited[tItems], "Tree hierarchy must not contain cycles/shared child arrays.");
         tVisited[tItems] = true;
 
@@ -41,7 +44,9 @@ function Tree.create(oParent, tOptions)
         end
     end
 
-    fValidate(tOptions.Items or {}, nil);
+    local tSource = tOptions.Items;
+    if (tSource == nil) then tSource = {}; end
+    fValidate(tSource, nil);
     assert(tOptions.Value == nil or tIds[tOptions.Value], "Unknown initial tree selection.");
     local oComponent = _ControlSurface.create(oParent, _Border.hostOptions(tOptions), "Tree");
     local oTree = _wx.wxTreeCtrl(oComponent.Control, _wx.wxID_ANY,

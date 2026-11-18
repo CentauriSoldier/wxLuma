@@ -91,6 +91,8 @@ local function run()
     oSkin.destroy();
     oFrame:Destroy();
     _wx.wxGetApp():Yield();
+    -- Showcase checks run only when explicitly requested by the caller.
+    if (not arg or arg[2] ~= "--showcase") then return; end
     local tDemo = require("Tests.GalleryUI")(_wx.NULL);
     local tWidgets = tDemo.Widgets;
     tDemo.Gallery.show("OrbValue", true);
