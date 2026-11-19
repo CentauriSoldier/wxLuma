@@ -88,7 +88,7 @@ local tCatalog = {
             Height = 330, Mode = "meters", Actions = {"MeterSlider", "ProgressSkin", "ProgressOrigin", "CircularDirection", "CircularStartAngle", "CircularProgressSkin", "CircularPie"},
             Description = "Linear, directional and circular meter variants can be compared together without separate panes for individual resources.",
             Usage = "The slider drives all five meters. Compare resource values, fill origins, CW/CCW direction, starting angles, skin/color appearance and ring/pie presentation.",
-            API = "Controls.progress(parent, {Skin = skin, Value = 70}); Controls.circularProgress(parent, {Skin = skin, Value = 25})"},
+            API = "Controls.progress(parent, {Skin = skin, Value = 70}); Controls.progress(parent, {Skin = skin, Shape = 1, FillMode = 2, Value = 25})"},
     }},
     {Id = "display", Title = "Labels & images", Cards = {
         {Id = "LED", Title = "LED indicators", Primary = {"LED", "LEDGlass", "LEDOff"}, Mode = "columns", Height = 150,
@@ -164,7 +164,7 @@ local tCatalog = {
             Actions = {"OrbValue", "OrbReserved", "GlobeOrigin", "GlobeSkin", "GlobeReserveOrigin", "RadialDirection", "RadialSkin", "RadialReserveDirection", "IrisDirection", "IrisBlades", "IrisPicture"},
             Description = "Globe, radial and iris variants share one meter section for direct visual comparison.",
             Usage = "Left: globe liquid level. Middle: radial fill. Right: iris aperture. Value stops at 100 minus reserve. Raising reserve trims current; lowering it leaves current unchanged. Other actions adjust the named variant's policy.",
-            API = "Controls.globeProgress(parent, options); Controls.radialProgress(parent, options); Controls.irisProgress(parent, options)"},
+            API = "Controls.progress(parent, {Shape = 1, FillMode = 0}); Controls.progress(parent, {Shape = 1, FillMode = 1}); Controls.irisProgress(parent, options)"},
     }},
     {Id = "menus", Title = "Menus & commands", Cards = {
         {Id = "MenuBar", Title = "Menu bar", Primary = {"MenuBar"}, Height = 44,

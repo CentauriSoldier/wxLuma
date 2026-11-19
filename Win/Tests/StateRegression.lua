@@ -126,7 +126,7 @@ local function run()
     local oMissing = fWidget("panel", oSource, "missing branch");
     fWidget("textfield", oMissing, "nested", {Value = "skip me"});
     fWidget("checkbox", oSource, "changed type", {Selected = true});
-    fWidget("globeProgress", oSource, "meter", {Min = 0, Max = 100, Value = 75, Reserved = 25});
+    fWidget("progress", oSource, "meter", {Shape = 1, FillMode = 0, Min = 0, Max = 100, Value = 75, Reserved = 25});
     fWidget("propertyGrid", oSource, "settings", {Properties = {
         {Id = "name", Value = "saved setting"}, {Id = "removed", Value = "removed setting"}}});
     fWidget("tabs", oSource, "tabs", {Items = {{Id = "alpha", Text = "Alpha"}, {Id = "beta", Text = "Beta"}}, Value = 2});
@@ -140,7 +140,7 @@ local function run()
     local oText = fWidget("textfield", oTarget, "name", {Value = "current name", OnChange = function() nChanges = nChanges + 1; end});
     local oExtra = fWidget("textfield", oTarget, "new child", {Value = "leave me"});
     local oDifferent = fWidget("slider", oTarget, "changed type", {Min = 0, Max = 100, Step = 1, Value = 12});
-    local oMeter = fWidget("globeProgress", oTarget, "meter", {Min = 0, Max = 100, Value = 10});
+    local oMeter = fWidget("progress", oTarget, "meter", {Shape = 1, FillMode = 0, Min = 0, Max = 100, Value = 10});
     local oGrid = fWidget("propertyGrid", oTarget, "settings", {Properties = {
         {Id = "other", Value = "new setting"}, {Id = "name", Value = "current setting"}}});
     local oTree = fWidget("treeEx", oTarget, "tree", {Items = {{Id = "keep", Text = "Keep", Expanded = false,

@@ -249,7 +249,7 @@ exhaustive gallery. Its five pages organize controls around real workflows:
 - Reports: charts derived from the current tasks and their completion state.
 - Settings: source/output paths, delivery policy, project properties and a dockable inspector.
 
-The application creates all 59 exported control factories, including chart and
+The application creates all exported control factories, including chart and
 picker variants, alongside native menus, labels and choices. The Project menu
 also opens a reusable review dialog and a separate project overview window.
 Appearance switches between System and Obsidian without resetting the workspace.
@@ -330,7 +330,7 @@ Repository/
 | Input and actions | `checkbox`, `radio`, `slider`, `rangeSlider`, `knob`, `switch`, `spinner`, `button`, `toggleButton`, `scrollbar`, `dropdown`, `textfield`, `multilineText`, `numericField`, `dateTimePicker`, `colorPicker`, `searchField`, `comboBox`, `filePicker`, `folderPicker` |
 | Display and data | `label`, `image`, `led`, `list`, `listEx`, `tree`, `treeEx`, `table`, `tooltip`, `propertyGrid`, `notification`, `logViewer` |
 | Graphs and charts | `chart`, `lineChart`, `areaChart`, `barChart`, `scatterChart`, `pieChart`, `donutChart` |
-| Progress | `progress`, `circularProgress`, `globeProgress`, `radialProgress`, `irisProgress` |
+| Progress | `progress`, `irisProgress` |
 | Containers and dialogs | `panel`, `dockablePanel`, `tabs`, `scrollContainer`, `splitContainer`, `dialog`, `collapsiblePanel`, `accordion` |
 | Menus and tools | `contextMenu`, `radialMenu`, `toolbar`, `statusBar`, `menuBar`, `breadcrumb` |
 
@@ -492,7 +492,7 @@ GlobeProgress and RadialProgress also use dedicated 256 x 256 opaque material im
 
 ## Progress controls
 
-### Numeric progress interface (prototype)
+### Unified progress interface
 
 One constructor can select the existing non-Iris progress behaviors:
 
@@ -548,8 +548,9 @@ direction; the existing mode-specific `get/setOrigin`, `get/setOrientation`, and
 All existing mode-specific constructor options pass through, including skin/artwork,
 color, text, outlines, radii, arc Thickness/StartAngle, disc Supersampling and
 ReserveRenderer. Default appearance and artwork remain those of the selected painter.
-Existing factories remain available; calls without the numeric selectors keep the
-original rectangular `progress` behavior.
+Calls without the numeric selectors keep the original rectangular `progress`
+behavior. Use circle + angular for the former `circularProgress` factory,
+circle + linear for `globeProgress`, and circle + radial for `radialProgress`.
 
 Reserved capacity still clamps Value to `Max - Reserved`. Numeric ReserveDirection
 maps independently; `get/setReserveFillDirection` use the same constants, with nil
@@ -558,15 +559,14 @@ ReserveStartAngle options remain available. A perpendicular linear ReserveOrigin
 has no forward/reverse equivalent: `getReserveFillDirection()` returns nil and its
 explicit edge as a second result; `getReserveOrigin()` retains that edge directly.
 
-This prototype selects a painter at construction. It does not yet merge all painter
-implementations, change a live object's shape/mode, decode image masks, or support
+The unified factory selects a painter at construction. It does not change a
+live object's shape/mode, decode image masks, or support
 arbitrary linear fill angles. All three fill modes support each declared shape.
 Iris remains separate. Object type/state identity remains that of the selected painter.
 
-Restart `Win/test.exe`, open Resources and scroll to Unified progress. The top row
-uses the numeric interface; the bottom row uses the original objects. Capacity,
-direction and reserve controls operate both rows for comparison. Automated exact-pixel
-parity checks run in `UnifiedProgressRegression.lua` as part of the default suite.
+Restart `Win/test.exe`, open Resources and scroll to Unified progress. The bar, arc,
+globe and radial meters share the capacity, direction and reserve controls.
+Automated exact-pixel parity checks run in `UnifiedProgressRegression.lua` as part of the default suite.
 
 Immediately below it, Polygon progress demonstrates linear, radial and angular
 polygons. It shares the capacity/fill-direction/reserved-amount controls above and
@@ -611,7 +611,7 @@ The Resources & panel workbench includes a directional progress meter with an or
 
 ### GlobeProgress and RadialProgress
 
-Create with `Controls.globeProgress(parent, options)` or `Controls.radialProgress(parent, options)`. Both use independent public objects and the existing `Min`/`Max`/`Value`, `getValue()`, `setValue(value, notify)`, appearance, skin, input-event and containment APIs. No timers run. Non-square bounds preserve a centered circle. Geometry is antialiased in both skin and colour modes and caches one raster per object.
+Use `Controls.progress` with `Shape = P.Shape.CIRCLE` and either `FillMode = P.Fill.LINEAR` for a globe or `FillMode = P.Fill.RADIAL` for a radial meter, where `P = wxLuma.Progress`. Both use independent public objects and the existing `Min`/`Max`/`Value`, `getValue()`, `setValue(value, notify)`, appearance, skin, input-event and containment APIs. No timers run. Non-square bounds preserve a centered circle. Geometry is antialiased in both skin and colour modes and caches one raster per object.
 
 GlobeProgress represents a straight liquid level inside a circular silhouette. Default is `Origin = "bottom"` and `Orientation = "vertical"`. All four origins are available through `getOrigin()`/`setOrigin(edge, notify)`; origin also sets the matching axis. `getOrientation()`/`setOrientation(axis, notify)` follow Progress's left/bottom forward and right/top reverse mapping. Progress measures level distance across the diameter, not filled circular area. The globe does not distort when the axis changes.
 
@@ -772,6 +772,23 @@ List/ListEx removal shifts all surviving indices with their logical rows. Replac
 
 Workbench: Lists & text has a List multi-select checkbox. Data has separate Table and ListEx checkboxes. Each starts disabled, matching the default.
 
+
+## Tree drag and drop
+
+Both `Controls.tree` and `Controls.treeEx` support dragging a node within the
+same tree. Drop on the upper or lower quarter of a row to insert before or after
+that row. Drop in the middle to append the node as a child. Subtrees move with
+their parent. Drops on the source, its descendants, or outside a row are ignored.
+Set `DragDrop = false` at creation to disable pointer moves.
+
+Use `moveNode(id, parentId, index, notify)` to move a node programmatically. Pass
+`nil` for the parent to move to the root, or for the index to append. Indices are
+one-based and are measured after removing the source. Invalid moves raise an
+error before changing the hierarchy, and an unchanged position is silent.
+Selection and node IDs survive a move, as do TreeEx check states.
+Subscribe to `itemMoved` for pointer moves or programmatic moves with
+`notify = true`. Its payload contains `Id`, `Parent`, `OldParent`, `Index`, and
+`OldIndex`. A nil parent denotes the root.
 
 ## TreeEx
 

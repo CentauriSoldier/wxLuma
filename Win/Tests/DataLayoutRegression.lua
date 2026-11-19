@@ -196,7 +196,77 @@ local function run()
         jEvent:delete();
     end
 
-    check(nTreeContext == 1 and nTreeActivated == 1, "Tree context/activation events carry stable node IDs.");    oTree.setValue("grandchild");
+    check(nTreeContext == 1 and nTreeActivated == 1, "Tree context/activation events carry stable node IDs.");
+    oTree.setValue("grandchild");
+    local tMove;
+    oTree.on("itemMoved", function(_, tEvent) tMove = tEvent; end);
+    check(not pcall(oTree.moveNode, "a", "grandchild") and not pcall(oTree.moveNode, "a", "root", 4)
+        and oTree.getChildren("root")[1] == "a", "Native tree rejects invalid moves before changing order.");
+    oTree.moveNode("a", "root", 2, true);
+    local oNativeBranch = oTree.TreeControl:GetFirstChild(oNativeRoot);
+    local oNativeFirst = oTree.TreeControl:GetFirstChild(oNativeBranch);
+    check(oTree.getChildren("root")[2] == "a"
+        and oTree.TreeControl:GetItemData(oNativeFirst):GetData() == "b", "Native and model sibling order agree after a move.");
+    check(tMove.Id == "a" and tMove.Parent == "root" and tMove.OldParent == "root"
+        and tMove.OldIndex == 1 and tMove.Index == 2 and oTree.getValue() == "grandchild"
+        and oTree.getNode("a").Expanded, "Tree moves preserve expansion and selection and report both positions.");
+    tMove = nil;
+    oTree.moveNode("a", "root", 2, true);
+    check(tMove == nil, "A same-position tree move stays silent.");
+
+    -- Exercise the native begin event, then move between the three drop zones.
+    local oNativeTree = oTree.TreeControl;
+    local oNativeSource = oNativeTree:GetNextSibling(oNativeFirst);
+    local oTargetBounds, oLabelBounds = _wx.wxRect(), _wx.wxRect();
+    assert(oNativeTree:GetBoundingRect(oNativeFirst, oTargetBounds, false));
+    assert(oNativeTree:GetBoundingRect(oNativeFirst, oLabelBounds, true));
+    local nDropX, nTop, nHeight = oLabelBounds:GetX() + 4, oTargetBounds:GetY(), oTargetBounds:GetHeight();
+    local oDropPoint = _wx.wxPoint(nDropX, nTop);
+    local fSetHighlight = oNativeTree.SetItemDropHighlight;
+    local bHighlighted = false;
+    oNativeTree.SetItemDropHighlight = function(oControl, oItem, bFlag)
+        bHighlighted = bFlag;
+        return fSetHighlight(oControl, oItem, bFlag);
+    end;
+    local oBegin = _wx.wxTreeEvent(_wx.wxEVT_COMMAND_TREE_BEGIN_DRAG, oNativeTree:GetId());
+    oBegin:SetEventObject(oNativeTree);
+    oBegin.GetItem = function() return oNativeSource; end;
+    oBegin.GetPoint = function() return oDropPoint; end;
+    oNativeTree:GetEventHandler():ProcessEvent(oBegin);
+    oBegin:delete(); oDropPoint:delete();
+    local oLine = oNativeTree:FindWindow("Tree drop insertion line");
+    check(oLine and oLine:IsShown() and not bHighlighted, "Native upper drop shows only an insertion line.");
+    local _, nUpperLine = oLine:GetPositionXY();
+
+    --[[!
+    @fqxn wxLuma.Tests.DataLayoutRegression.run.treeMouse
+    @desc Sends client-coordinate drag motion or release through the native tree.
+    !]]
+    local function fTreeMouse(nType, nY)
+        local oEvent = _wx.wxMouseEvent(nType);
+        oEvent:SetId(oNativeTree:GetId()); oEvent:SetEventObject(oNativeTree);
+        oEvent.GetX = function() return nDropX; end;
+        oEvent.GetY = function() return nY; end;
+        oNativeTree:GetEventHandler():ProcessEvent(oEvent);
+        oEvent:delete();
+    end
+    fTreeMouse(_wx.wxEVT_MOTION, nTop + nHeight // 2);
+    check(bHighlighted and not oLine:IsShown(), "Native middle drop shows only the target highlight.");
+    fTreeMouse(_wx.wxEVT_MOTION, nTop + nHeight * 7 // 8);
+    local _, nLowerLine = oLine:GetPositionXY();
+    check(oLine:IsShown() and not bHighlighted and nLowerLine > nUpperLine,
+        "Native lower drop replaces the highlight with a line below the row.");
+    fTreeMouse(_wx.wxEVT_MOTION, -1);
+    check(not oLine:IsShown() and not bHighlighted, "An invalid native target shows no drop cue.");
+    fTreeMouse(_wx.wxEVT_LEFT_UP, nTop + nHeight // 2);
+    check(not oLine:IsShown() and not bHighlighted and not oNativeTree:HasCapture(),
+        "Native release clears the marker and mouse capture.");
+    oNativeTree.SetItemDropHighlight = fSetHighlight;
+    oTargetBounds:delete(); oLabelBounds:delete();
+    check(tMove and tMove.Parent == "b" and oTree.getNode("a").Parent == "b"
+        and oTree.getValue() == "grandchild", "Dropping on a native row's middle reparents the subtree.");
+    oTree.moveNode("a", "root", 1);
+
     local nBeforeRemoval = nTreeChanges;
     oTree.removeNode("a", true);
     check(oTree.getNode("a") == nil and oTree.getNode("grandchild") == nil, "Subtree removal removes descendants.");

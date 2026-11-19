@@ -347,6 +347,85 @@ local function run()
         check(not oWidget.handleKey("down", _wx.WXK_END), oWidget.Kind.." rejects disabled keyboard input.");
         oWidget.draw(oDC, 300, oWidget == oKnob and 180 or 60); oWidget.setEnabled(true);
     end
+    local oKnobHost = _wx.wxPanel(oFrame, _wx.wxID_ANY);
+    local oBackdrop = _wx.wxColour(16, 72, 116);
+    local oBackdropBrush = _wx.wxBrush(oBackdrop);
+    oKnobHost:SetBackgroundColour(oBackdrop);
+    local oSystemKnob = _Luma.Controls.knob(oKnobHost, {Value = 50});
+    local oSystemFace = _wx.wxSystemSettings.GetColour(_wx.wxSYS_COLOUR_BTNFACE);
+    local oSystemNeedle = _wx.wxSystemSettings.GetColour(_wx.wxSYS_COLOUR_BTNTEXT);
+
+    --[[!
+    @fqxn wxLuma.Tests.AdditionalControlsRegression.run.systemKnobPixels
+    @desc Samples a System knob drawn over a caller-owned contrasting backdrop.
+    !]]
+    local function fSystemKnobPixels()
+        oDC:SetBackground(oBackdropBrush); oDC:Clear();
+        oSystemKnob.draw(oDC, 160, 160);
+        oDC:SelectObject(_wx.wxNullBitmap);
+        local oImage = oBitmap:ConvertToImage();
+        oDC:SelectObject(oBitmap);
+        return oImage;
+    end
+
+    --[[!
+    @fqxn wxLuma.Tests.AdditionalControlsRegression.run.hasPixel
+    @desc Checks one pixel against an exact system or backdrop color.
+    !]]
+    local function fHasPixel(oImage, nX, nY, oColour)
+        return oImage:GetRed(nX, nY) == oColour:Red()
+            and oImage:GetGreen(nX, nY) == oColour:Green()
+            and oImage:GetBlue(nX, nY) == oColour:Blue();
+    end
+
+    local oSystemImage = fSystemKnobPixels();
+    check(fHasPixel(oSystemImage, 110, 70, oSystemFace), "The System dial uses the button-face color.");
+    check(fHasPixel(oSystemImage, 80, 40, oSystemNeedle), "The System needle points up at midrange.");
+    check(fHasPixel(oSystemImage, 5, 5, oBackdrop) and fHasPixel(oSystemImage, 150, 110, oBackdrop)
+        and fHasPixel(oSystemImage, 80, 145, oBackdrop), "System knob leaves the corners and caption area unpainted.");
+    -- A partially covered pixel differs from both adjoining solid colors.
+    local oSystemEdge = _wx.wxSystemSettings.GetColour(_wx.wxSYS_COLOUR_BTNSHADOW);
+    local nSmoothRim, nSmoothNeedle = 0, 0;
+    for nY = 2, 135 do
+        for nX = 13, 146 do
+            local nDistance = (nX - 80)^2 + (nY - 69)^2;
+            if (nDistance >= 64^2 and nDistance <= 69^2
+                and not fHasPixel(oSystemImage, nX, nY, oBackdrop)
+                and not fHasPixel(oSystemImage, nX, nY, oSystemFace)
+                and not fHasPixel(oSystemImage, nX, nY, oSystemEdge)) then
+                nSmoothRim = nSmoothRim + 1;
+            end
+        end
+    end
+    for nY = 32, 55 do
+        for nX = 75, 85 do
+            if (not fHasPixel(oSystemImage, nX, nY, oSystemFace)
+                and not fHasPixel(oSystemImage, nX, nY, oSystemNeedle)) then
+                nSmoothNeedle = nSmoothNeedle + 1;
+            end
+        end
+    end
+    check(nSmoothRim > 10, "The System dial rim blends into the caller's backdrop.");
+    check(nSmoothNeedle > 10, "The System needle has antialiased edge pixels.");
+    oSystemEdge:delete(); oSystemImage:delete();
+
+    oKnobHost:SetBackgroundColour(oSystemFace);
+    local oWindowColour = _wx.wxSystemSettings.GetColour(_wx.wxSYS_COLOUR_WINDOW);
+    oSystemKnob.Hover = true;
+    oSystemImage = fSystemKnobPixels();
+    check(fHasPixel(oSystemImage, 110, 70, oWindowColour) and fHasPixel(oSystemImage, 5, 5, oBackdrop),
+        "Hover keeps the backdrop intact and the dial contrasts with a button-colored parent.");
+    oSystemImage:delete(); oWindowColour:delete();
+
+    oSystemKnob.setEnabled(false);
+    oSystemImage = fSystemKnobPixels();
+    local oDisabledNeedle = _wx.wxSystemSettings.GetColour(_wx.wxSYS_COLOUR_GRAYTEXT);
+    check(fHasPixel(oSystemImage, 80, 40, oDisabledNeedle) and fHasPixel(oSystemImage, 5, 5, oBackdrop),
+        "Disabled System knob uses the disabled needle color and leaves its surroundings untouched.");
+    oSystemImage:delete(); oDisabledNeedle:delete();
+    oSystemKnob.destroy(); oKnobHost:Destroy();
+    oSystemNeedle:delete(); oSystemFace:delete(); oBackdropBrush:delete(); oBackdrop:delete();
+
     -- A monochrome test skin isolates needle edge coverage from face shading.
     -- Intermediate channel values therefore prove actual antialiasing.
     local oWhiteImage = _wx.wxImage(1, 1); oWhiteImage:SetRGB(0, 0, 255, 255, 255);

@@ -75,8 +75,8 @@ function BorderRegression.run()
             end
         end
         local tMeters = {
-            progress = {Min = 0, Max = 100, Value = 50}, circularProgress = {Min = 0, Max = 100, Value = 50},
-            globeProgress = {Min = 0, Max = 100, Value = 50}, radialProgress = {Min = 0, Max = 100, Value = 50},
+            progress = {Min = 0, Max = 100, Value = 50}, circularProgress = {Shape = 1, FillMode = 2, Min = 0, Max = 100, Value = 50},
+            globeProgress = {Shape = 1, FillMode = 0, Min = 0, Max = 100, Value = 50}, radialProgress = {Shape = 1, FillMode = 1, Min = 0, Max = 100, Value = 50},
             irisProgress = {Min = 0, Max = 100, Value = 50}, knob = {Min = 0, Max = 100, Value = 50, Rate = 1},
             led = {Value = true}, slider = {Min = 0, Max = 100, Step = 1, Value = 50},
             rangeSlider = {Min = 0, Max = 100, Step = 1, Value = {Low = 20, High = 80}},
@@ -86,7 +86,8 @@ function BorderRegression.run()
             for _, nBorder in ipairs({false, _wx.wxBORDER_DEFAULT, _wx.wxBORDER_NONE, _wx.wxBORDER_SIMPLE, _wx.wxBORDER_SUNKEN}) do
                 local tOptions = {}; for sKey, vValue in pairs(tBase) do tOptions[sKey] = vValue; end
                 if (nBorder ~= false) then tOptions.Border = nBorder; end
-                local oMeter = oLuma.Controls[sFactory](oFrame, tOptions); tOwned[#tOwned + 1] = oMeter;
+                local fCreate = tOptions.Shape ~= nil and oLuma.Controls.progress or oLuma.Controls[sFactory];
+                local oMeter = fCreate(oFrame, tOptions); tOwned[#tOwned + 1] = oMeter;
                 local nExpected = nBorder == false and _wx.wxBORDER_NONE or nBorder;
                 fCheck((oMeter.Control:GetWindowStyleFlag() & _wx.wxBORDER_MASK) == nExpected,
                     sFactory.." is borderless by default and honors explicit overrides.");

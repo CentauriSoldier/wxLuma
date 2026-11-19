@@ -30,9 +30,11 @@ local function run()
     local oFrame = _wx.wxFrame(_wx.NULL, _wx.wxID_ANY, "Reserve value regression");
 
     for _, sFactory in ipairs({"progress", "circularProgress", "globeProgress", "radialProgress", "irisProgress"}) do
+        local nFillMode = ({globeProgress = 0, radialProgress = 1, circularProgress = 2})[sFactory];
+        local fCreate = sFactory == "irisProgress" and _Controls.irisProgress or _Controls.progress;
         local tOrder = {};
         local oMeter;
-        oMeter = _Controls[sFactory](oFrame, {Skin = oSkin, Min = 10, Max = 110, Value = 110, Reserved = 20,
+        oMeter = fCreate(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode, Skin = oSkin, Min = 10, Max = 110, Value = 110, Reserved = 20,
             OnChange = function(nValue, oSender)
                 check(oSender == oMeter and nValue == oMeter.getValue()
                     and nValue <= oMeter.getEffectiveMax(), "OnChange sees committed usable value.");
@@ -83,7 +85,7 @@ local function run()
 
         check(not pcall(oMeter.setValue, math.huge, true) and oMeter.getValue() == 10, "Invalid current preserves the bounded state.");
         oMeter.destroy();
-        local oFullReserve = _Controls[sFactory](oFrame, {Skin = oSkin, Min = 10, Max = 110, Value = 110, Reserved = 100});
+        local oFullReserve = fCreate(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode, Skin = oSkin, Min = 10, Max = 110, Value = 110, Reserved = 100});
         check(oFullReserve.getValue() == 10 and oFullReserve.isFull(), "Fully reserved creation stores Min.");
         oFullReserve.destroy();
     end

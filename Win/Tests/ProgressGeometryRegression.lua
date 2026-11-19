@@ -75,11 +75,45 @@ local function run()
     local oFrame = _wx.wxFrame(_wx.NULL, _wx.wxID_ANY, "Progress geometry",
         _wx.wxDefaultPosition, _wx.wxSize(600, 500));
     local oBar = _Controls.progress(oFrame, {Skin = oSkin, Min = 10, Max = 110, Value = 35, Text = ""});
-    local oCircle = _Controls.circularProgress(oFrame, {Skin = oSkin, Min = 0, Max = 100, Value = 25, Text = ""});
+    local oCircle = _Controls.progress(oFrame, {Shape = 1, FillMode = 2, Skin = oSkin, Min = 0, Max = 100, Value = 25, Text = ""});
     oBar.layout(10, 10, 108, 108);
     oCircle.layout(140, 10, 100, 100);
     check(oBar.getOrientation() == "horizontal" and oBar.getOrigin() == "left", "Default horizontal left.");
     check(oCircle.getStartAngle() == 0, "Default circle top.");
+    -- Reproduce Task Desk's System bar at 30% and sample both fill and track.
+    for _, nStroke in ipairs({1, 2, 3}) do
+        local oOutlineBar = _Controls.progress(oFrame, {Min = 0, Max = 100, Value = 30, Text = "",
+            Appearance = "skin", OutlineWidth = nStroke, OutlineColour = {R = 113, G = 23, B = 178}});
+        oOutlineBar.layout(0, 0, 231, 36);
+        local oImage = pixels(oOutlineBar, 231, 36);
+        oOutlineBar.destroy(); oOutlineBar.Control:Destroy();
+
+        --[[!
+        @fqxn wxLuma.Tests.ProgressGeometryRegression.run.isOutline
+        @desc Identifies pixels painted in the explicitly configured outline color.
+        !]]
+        local function fIsOutline(nX, nY)
+            return oImage:GetRed(nX, nY) == 113 and oImage:GetGreen(nX, nY) == 23
+                and oImage:GetBlue(nX, nY) == 178;
+        end
+
+        local bBounded = true;
+        for _, nX in ipairs({12, 219}) do
+            for nOffset = 0, nStroke - 1 do
+                bBounded = bBounded and fIsOutline(nX, 4 + nOffset) and fIsOutline(nX, 31 - nOffset);
+            end
+            bBounded = bBounded and not fIsOutline(nX, 3) and not fIsOutline(nX, 32)
+                and not fIsOutline(nX, 4 + nStroke) and not fIsOutline(nX, 31 - nStroke);
+        end
+        for nOffset = 0, nStroke - 1 do
+            bBounded = bBounded and fIsOutline(4 + nOffset, 18) and fIsOutline(226 - nOffset, 18);
+        end
+        bBounded = bBounded and not fIsOutline(3, 18) and not fIsOutline(227, 18)
+            and not fIsOutline(4 + nStroke, 18) and not fIsOutline(226 - nStroke, 18);
+        oImage:delete();
+        check(bBounded, "A "..nStroke.."px outline covers the outermost track pixels without extending past them.");
+    end
+
     local tSamples = {
         {"left", 14, 54, 94, 54},
         {"right", 94, 54, 14, 54},
@@ -221,8 +255,8 @@ local function run()
         tOptions.Skin, tOptions.Min, tOptions.Max, tOptions.Value = oSkin, 0, 100, 50;
         check(not pcall(_Controls.progress, oFrame, tOptions), "Reject conflicting/invalid creation geometry.");
     end
-    check(not pcall(_Controls.circularProgress, oFrame,
-        {Skin = oSkin, Min = 0, Max = 100, Value = 50, StartAngle = false}), "Reject invalid creation angle.");
+    check(not pcall(_Controls.progress, oFrame,
+        {Shape = 1, FillMode = 2, Skin = oSkin, Min = 0, Max = 100, Value = 50, StartAngle = false}), "Reject invalid creation angle.");
     for _, oExtra in ipairs(tExtra) do
         oExtra.destroy();
     end

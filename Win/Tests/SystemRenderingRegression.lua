@@ -322,12 +322,15 @@ function SystemRenderingRegression.run()
         fCheck(nFocusParts == 0, "Tab selection does not draw the old underline material.");
         fCheck(sFocusedTabs == sCenteredTabs, "Tab focus adds no outline or replacement decoration.");
         for _, sFactory in ipairs({"progress", "circularProgress", "globeProgress", "radialProgress", "irisProgress"}) do
+            local nFillMode = ({globeProgress = 0, radialProgress = 1, circularProgress = 2})[sFactory];
             local tPixels = {};
             for nMode = 1, 3 do
                 local tOptions = {Min = 0, Max = 100, Value = 53, Text = "53%", Appearance = "skin"};
                 if (nMode == 2) then tOptions.Outline = false; end
                 if (nMode == 3) then tOptions.OutlineColour = {R = 235, G = 40, B = 90}; tOptions.OutlineWidth = 3; end
-                local oMeter = oLuma.Controls[sFactory](oFrame, tOptions);
+                tOptions.Shape, tOptions.FillMode = nFillMode and 1, nFillMode;
+                local fCreate = sFactory == "irisProgress" and oLuma.Controls.irisProgress or oLuma.Controls.progress;
+                local oMeter = fCreate(oFrame, tOptions);
                 tOwned[#tOwned + 1] = oMeter; oMeter.layout(0, 0, 120, 100);
                 tPixels[nMode] = fRender(oMeter.draw, 120, 100);
                 if (nMode == 1 and sFactory ~= "progress") then

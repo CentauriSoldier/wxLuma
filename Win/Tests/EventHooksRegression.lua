@@ -139,9 +139,9 @@ local function run()
         list = {Items = {"One", "Two"}}, dropdown = {Items = {"One", "Two"}}, textfield = {},
         numericField = {}, label = {}, image = {}, colorPicker = {}, toolbar = {}, statusBar = {},
         progress = {Min = 0, Max = 100, Value = 20},
-        circularProgress = {Min = 0, Max = 100, Value = 20},
-        globeProgress = {Min = 0, Max = 100, Value = 20},
-        radialProgress = {Min = 0, Max = 100, Value = 20},
+        circularProgress = {Shape = 1, FillMode = 2, Min = 0, Max = 100, Value = 20},
+        globeProgress = {Shape = 1, FillMode = 0, Min = 0, Max = 100, Value = 20},
+        radialProgress = {Shape = 1, FillMode = 1, Min = 0, Max = 100, Value = 20},
         irisProgress = {Min = 0, Max = 100, Value = 20},
         panel = {}, tabs = {Items = {"One", "Two"}}, scrollContainer = {}, splitContainer = {},
         tree = {Items = {{Id = "one", Text = "One"}}},
@@ -154,7 +154,8 @@ local function run()
 
     for sName, tOptions in pairs(tFactories) do
         tOptions.Skin = oSkin;
-        local oObject = _Controls[sName](oPanel, tOptions);
+        local fCreate = tOptions.Shape ~= nil and _Controls.progress or _Controls[sName];
+        local oObject = fCreate(oPanel, tOptions);
         tObjects[sName] = oObject;
         if (oObject.layout) then oObject.layout(0, 0, 400, 240); end
         exercise(oObject, oObject.Control);

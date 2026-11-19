@@ -74,7 +74,7 @@ local function run()
         _wx.wxDefaultPosition, _wx.wxSize(400, 300));
     local oSkin = _Controls.loadSkin();
     local nChanges, nValues, nDirections = 0, 0, 0;
-    local oProgress = _Controls.circularProgress(oFrame, {
+    local oProgress = _Controls.progress(oFrame, {Shape = 1, FillMode = 2,
         Skin = oSkin,
         Min = 0,
         Max = 100,
@@ -164,7 +164,8 @@ local function run()
         {Min = 0, Max = 1, Value = 0, Thickness = 0}
     }) do
         tInvalid.Skin = oSkin;
-        check(not pcall(_Controls.circularProgress, oFrame, tInvalid), "Rejects invalid creation options.");
+        tInvalid.Shape, tInvalid.FillMode = 1, 2;
+        check(not pcall(_Controls.progress, oFrame, tInvalid), "Rejects invalid creation options.");
     end
 
     -- Repeated shape changes exercise native geometry replacement and tiny bounds.

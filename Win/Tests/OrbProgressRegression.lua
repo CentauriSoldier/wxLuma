@@ -89,9 +89,9 @@ local function run()
     local oSkin = _Controls.loadSkin();
     local oFrame = _wx.wxFrame(_wx.NULL, _wx.wxID_ANY, "Orb progress regression",
         _wx.wxDefaultPosition, _wx.wxSize(700, 450));
-    local oGlobe = _Controls.globeProgress(oFrame, {Skin = oSkin, Min = 10, Max = 110,
+    local oGlobe = _Controls.progress(oFrame, {Shape = 1, FillMode = 0, Skin = oSkin, Min = 10, Max = 110,
         Value = 35, Text = "", Colour = {R = 200, G = 100, B = 50}});
-    local oRadial = _Controls.radialProgress(oFrame, {Skin = oSkin, Min = 10, Max = 110,
+    local oRadial = _Controls.progress(oFrame, {Shape = 1, FillMode = 1, Skin = oSkin, Min = 10, Max = 110,
         Value = 60, Text = "", Colour = {R = 200, G = 100, B = 50}});
     oGlobe.layout(0, 0, 100, 100);
     oRadial.layout(120, 0, 100, 100);
@@ -303,9 +303,9 @@ local function run()
     end
 
     local oExternal = _Controls.loadSkin(pTemp);
-    local oCustomGlobe = _Controls.globeProgress(oFrame, {Skin = oExternal, Min = 0, Max = 100,
+    local oCustomGlobe = _Controls.progress(oFrame, {Shape = 1, FillMode = 0, Skin = oExternal, Min = 0, Max = 100,
         Value = 25, Text = "", Artwork = sArtwork});
-    local oCustomRadial = _Controls.radialProgress(oFrame, {Skin = oExternal, Min = 0, Max = 100,
+    local oCustomRadial = _Controls.progress(oFrame, {Shape = 1, FillMode = 1, Skin = oExternal, Min = 0, Max = 100,
         Value = 50, Direction = "inward", Text = "", Artwork = sArtwork});
     local oImage = pixels(oCustomGlobe, 100, 100);
     check(colour(oImage, 50, 85, 30, 210, 80) and colour(oImage, 50, 15, 120, 40, 170), "Globe uses external root/materials.");
@@ -327,12 +327,14 @@ local function run()
         {Min = 0, Max = 1, Value = 0, Colour = {R = -1, G = 0, B = 0}}
     }) do
         tOptions.Skin = oSkin;
-        check(not pcall(_Controls.globeProgress, oFrame, tOptions), "Invalid globe creation rejected.");
-        check(not pcall(_Controls.radialProgress, oFrame, tOptions), "Invalid radial creation rejected.");
+        tOptions.Shape, tOptions.FillMode = 1, 0;
+        check(not pcall(_Controls.progress, oFrame, tOptions), "Invalid globe creation rejected.");
+        tOptions.FillMode = 1;
+        check(not pcall(_Controls.progress, oFrame, tOptions), "Invalid radial creation rejected.");
     end
-    check(not pcall(_Controls.globeProgress, oFrame, {Skin = oSkin, Min = 0, Max = 1,
+    check(not pcall(_Controls.progress, oFrame, {Shape = 1, FillMode = 0, Skin = oSkin, Min = 0, Max = 1,
         Value = 0, Orientation = "vertical", Origin = "left"}), "Conflicting globe geometry rejected.");
-    check(not pcall(_Controls.radialProgress, oFrame, {Skin = oSkin, Min = 0, Max = 1,
+    check(not pcall(_Controls.progress, oFrame, {Shape = 1, FillMode = 1, Skin = oSkin, Min = 0, Max = 1,
         Value = 0, Direction = false}), "Invalid radial creation direction rejected.");
 
     -- Rapid changes exercise owned raster replacement and shared material reuse.
@@ -363,10 +365,10 @@ local function run()
     oPreviewDC:SetBackground(oPreviewBrush);
     oPreviewDC:Clear();
     local tPreview = {
-        {"Globe / skin", _Controls.globeProgress, {}},
-        {"Globe / colour", _Controls.globeProgress, {Colour = {R = 185, G = 50, B = 60}}},
-        {"Radial / outward", _Controls.radialProgress, {Direction = "outward"}},
-        {"Radial / inward", _Controls.radialProgress, {Direction = "inward"}}
+        {"Globe / skin", _Controls.progress, {Shape = 1, FillMode = 0}},
+        {"Globe / colour", _Controls.progress, {Shape = 1, FillMode = 0, Colour = {R = 185, G = 50, B = 60}}},
+        {"Radial / outward", _Controls.progress, {Shape = 1, FillMode = 1, Direction = "outward"}},
+        {"Radial / inward", _Controls.progress, {Shape = 1, FillMode = 1, Direction = "inward"}}
     };
 
     for nIndex, tPreviewItem in ipairs(tPreview) do

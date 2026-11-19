@@ -36,6 +36,55 @@ function PolygonProgressRegression.run()
         end
         fCheck(not pcall(oLuma.Controls.progress, oFrame, {Shape = 2, Polygon = tPolygon, Min = 0, Max = 100, Value = 50, ReserveRenderer = "native"}),
             "Disc-only native reservation is rejected explicitly for polygons.");
+        -- Interleave different sizes that borrow the same skin material.
+        local tOptions = {Theme = oTheme, Shape = P.Shape.POLYGON, FillMode = P.Fill.ANGULAR,
+            Polygon = tPolygon, Min = 0, Max = 100, Value = 60, Text = "", Appearance = "skin"};
+        local oLarger = oLuma.Controls.progress(oFrame, tOptions);
+        local oSmaller = oLuma.Controls.progress(oFrame, tOptions);
+        tOwned[#tOwned + 1], tOwned[#tOwned + 2] = oLarger, oSmaller;
+        oLarger.layout(0, 0, 32, 32); oSmaller.layout(0, 0, 24, 24);
+
+        --[[!
+        @fqxn wxLuma.Tests.PolygonProgressRegression.run.pixels
+        @desc Reads the current RGB output into a detached string.
+        !]]
+        local function fPixels()
+            oDC:SelectObject(_wx.wxNullBitmap);
+            local oImage = oBitmap:ConvertToImage();
+            local sPixels = oImage:GetData();
+            oImage:delete();
+            oDC:SelectObject(oBitmap);
+            return sPixels;
+        end
+
+        for _, sTheme in ipairs({"System", "Obsidian"}) do
+            oTheme.setName(sTheme);
+            oDC:DestroyClippingRegion(); oDC:Clear();
+            oLarger.draw(oDC, 32, 32);
+            local sExpected = fPixels();
+            oSmaller.draw(oDC, 24, 24);
+
+            local fGetBitmap, nRequests = oTheme.getBitmap, 0;
+            oTheme.getBitmap = function(...)
+                nRequests = nRequests + 1;
+                return fGetBitmap(...);
+            end;
+            local bDrawn, sDrawError = pcall(function()
+                oLarger.setValue(75); oLarger.draw(oDC, 32, 32);
+                oSmaller.setValue(75); oSmaller.draw(oDC, 24, 24);
+                -- Compare complete, freshly drawn frames after sharing the output DC.
+                oDC:DestroyClippingRegion(); oDC:Clear();
+                oLarger.setValue(60); oLarger.draw(oDC, 32, 32);
+                oSmaller.setValue(60);
+            end);
+            oTheme.getBitmap = fGetBitmap;
+            fCheck(bDrawn and nRequests == 0,
+                "Interleaved value changes reuse each control's stipple brushes: "..tostring(sDrawError));
+            fCheck(fPixels() == sExpected, "Different-sized material replacement preserves exact polygon pixels.");
+        end
+        oLarger.destroy(); oLarger.Control:Destroy();
+        oSmaller.destroy(); oSmaller.Control:Destroy();
+
         for _, sTheme in ipairs({"System", "Obsidian"}) do
             oTheme.setName(sTheme);
             for _, shape in ipairs({P.Shape.RECTANGLE, P.Shape.POLYGON}) do

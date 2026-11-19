@@ -1,5 +1,13 @@
 local _wx = require("wx");
 local _Progress = require("wxLuma.Progress");
+-- Keep the renderer-level reference for exact pixel parity after removing the public factories.
+local _tPainters = {
+    progress = require("wxLuma.Widgets.Progress").create,
+    globeProgress = require("wxLuma.Widgets.GlobeProgress").create,
+    radialProgress = require("wxLuma.Widgets.RadialProgress").create,
+    circularProgress = require("wxLuma.Widgets.CircularProgress").create,
+};
+
 local UnifiedProgressRegression = {};
 
 --[[!
@@ -44,6 +52,12 @@ function UnifiedProgressRegression.run()
         {Factory = "circularProgress", Shape = 1, FillMode = 2},
     };
     local bOK, sError = xpcall(function()
+        -- Only the unified constructor and the separate iris are public.
+        for _, sFactory in ipairs({"globeProgress", "radialProgress", "circularProgress"}) do
+            fCheck(oLuma.Controls[sFactory] == nil and require("wxLuma.Controls")[sFactory] == nil,
+                "Retired progress factory: "..sFactory);
+        end
+        fCheck(type(oLuma.Controls.irisProgress) == "function", "Iris retains its public factory.");
         fCheck(_Progress.Fill.LINEAR == 0 and _Progress.Fill.RADIAL == 1 and _Progress.Fill.ANGULAR == 2
             and _Progress.Direction.FORWARD == 0 and _Progress.Direction.REVERSE == 1, "Public numeric constant values.");
         local oReserveOnly = oLuma.Controls.progress(oFrame, {Min = 0, Max = 100, Value = 50, ReserveDirection = 0});
@@ -77,7 +91,7 @@ function UnifiedProgressRegression.run()
                             tNew.StartAngle, tNew.ReserveStartAngle, tOld.StartAngle, tOld.ReserveStartAngle = 45, 135, 45, 135;
                         end
                     end
-                    local oNew, oOld = oLuma.Progress.create(oFrame, tNew), oLuma.Controls[tCase.Factory](oFrame, tOld);
+                    local oNew, oOld = oLuma.Progress.create(oFrame, tNew), _tPainters[tCase.Factory](oFrame, tOld);
                     tOwned[#tOwned + 1], tOwned[#tOwned + 2] = oNew, oOld;
                     oNew.layout(0, 0, 96, 96); oOld.layout(0, 0, 96, 96);
                     fCheck(oNew.getShape() == tCase.Shape and oNew.getFillMode() == tCase.FillMode
@@ -134,7 +148,7 @@ function UnifiedProgressRegression.run()
             for sKey, vValue in pairs(tCase.Options) do tNew[sKey], tOld[sKey] = vValue, vValue; end
             if (tCase.FillMode == 1) then tOld.Direction = "outward";
             elseif (tCase.FillMode == 2) then tOld.Direction = "CCW"; end
-            local oNew, oOld = oLuma.Controls.progress(oFrame, tNew), oLuma.Controls[tCase.Factory](oFrame, tOld);
+            local oNew, oOld = oLuma.Controls.progress(oFrame, tNew), _tPainters[tCase.Factory](oFrame, tOld);
             tOwned[#tOwned + 1], tOwned[#tOwned + 2] = oNew, oOld;
             fCheck(fPixels(oNew) == fPixels(oOld), "Specialized constructor options retain exact pixels: "..tCase.Factory);
             if (oNew.getSupersampling) then

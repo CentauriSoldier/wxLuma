@@ -163,7 +163,7 @@ return function(oParent)
             fMessage("Progress fills from "..sOrigin);
         end
     })));
-    fRemember("CircularProgress", Controls.circularProgress(fDemoParent("CircularProgress", oResources), fOptions({
+    fRemember("CircularProgress", Controls.progress(fDemoParent("CircularProgress", oResources), fOptions({Shape = 1, FillMode = 2,
         Min = 0,
         Max = 100,
         Value = 25,
@@ -256,7 +256,7 @@ return function(oParent)
     -- Factories receive their gallery parents while stable widget keys remain
     -- available to callbacks, application examples and regression fixtures.
     local oOrbs = tTabs.Pages[7];
-    fRemember("GlobeProgress", Controls.globeProgress(fDemoParent("GlobeProgress", oOrbs), fOptions({
+    fRemember("GlobeProgress", Controls.progress(fDemoParent("GlobeProgress", oOrbs), fOptions({Shape = 1, FillMode = 0,
         Min = 0,
         Max = 100,
         Value = 65,
@@ -265,7 +265,7 @@ return function(oParent)
         Text = "%v%",
         OnChange = fChanged("Globe progress")
     })));
-    fRemember("RadialProgress", Controls.radialProgress(fDemoParent("RadialProgress", oOrbs), fOptions({
+    fRemember("RadialProgress", Controls.progress(fDemoParent("RadialProgress", oOrbs), fOptions({Shape = 1, FillMode = 1,
         Min = 0,
         Max = 100,
         Value = 65,

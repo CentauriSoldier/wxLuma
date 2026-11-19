@@ -204,7 +204,8 @@ local function run()
     end;
     local bOK, sError = pcall(function()
         for _, sFactory in ipairs({"globeProgress", "radialProgress"}) do
-            local oMeter = _Controls[sFactory](oFrame, {Skin = oSkin, Min = 0, Max = 100, Value = 35, Supersampling = 2});
+            local nFillMode = ({globeProgress = 0, radialProgress = 1})[sFactory];
+            local oMeter = _Controls.progress(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode, Skin = oSkin, Min = 0, Max = 100, Value = 35, Supersampling = 2});
             tMeters[#tMeters + 1] = oMeter;
             oMeter.layout(0, 0, 220, 220);
             check(oMeter.getReserveRenderer() == "auto", "Native rendering is the default policy.");

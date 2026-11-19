@@ -111,7 +111,8 @@ local function run()
     local tComponents = {};
 
     for _, sKind in ipairs({"progress", "circularProgress", "globeProgress", "radialProgress"}) do
-        local oComponent = _Controls[sKind](oFrame, {
+        local nFillMode = ({globeProgress = 0, radialProgress = 1, circularProgress = 2})[sKind];
+        local oComponent = _Controls.progress(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode,
             Skin = tSkin, Min = 10, Max = 110, Value = 40, Text = "", Appearance = "skin"
         });
         tComponents[#tComponents + 1] = oComponent;
@@ -365,7 +366,8 @@ local function run()
     oPreviewDC:Clear();
 
     for nIndex, sKind in ipairs({"progress", "circularProgress", "globeProgress", "radialProgress"}) do
-        local oSample = _Controls[sKind](oFrame, {Skin = oRealSkin, Min = 0, Max = 100,
+        local nFillMode = ({globeProgress = 0, radialProgress = 1, circularProgress = 2})[sKind];
+        local oSample = _Controls.progress(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode, Skin = oRealSkin, Min = 0, Max = 100,
             Value = 45, Reserved = 25, Text = "", Appearance = "skin"});
 
         if (sKind == "circularProgress") then

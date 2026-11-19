@@ -390,6 +390,74 @@ local function run()
     oDC:delete();
     oBitmap:delete();
     oBrush:delete();
+    -- Use a small independent tree to exercise row drag zones and stable IDs.
+    local oDragTree = _Controls.treeEx(oPanel, {Skin = oSkin, Checkboxes = true,
+        MultiSelect = true, CheckPropagation = false, Items = {
+            {Id = "source", Text = "Source", Expanded = true, Children = {{Id = "child", Text = "Child"}}},
+            {Id = "target", Text = "Target"},
+            {Id = "other", Text = "Other"},
+        }});
+    oDragTree.layout(12, 220, 400, 250);
+    oDragTree.setSelected({"other", "child"});
+    oDragTree.setChecked("child", true);
+    local tMove;
+    oDragTree.on("itemMoved", function(_, tEvent) tMove = tEvent; end);
+    local oRows = oDragTree.Rows;
+    local nRowHeight = oRows.RowHeight;
+    oRows.handlePointer("down", 96, 4 + nRowHeight // 2);
+    oRows.handlePointer("move", 96, 4 + nRowHeight * 2 + nRowHeight // 2);
+    check(oRows.HoverRow == 0, "TreeEx clears ordinary row hover when dragging starts.");
+    local oCueBitmap, oCueDC = _wx.wxBitmap(380, 200), _wx.wxMemoryDC();
+    oCueDC:SelectObject(oCueBitmap);
+    local nLines, nHighlights = 0, 0;
+    local fDrawLine, fDrawRectangle = oCueDC.DrawLine, oCueDC.DrawRectangle;
+    oCueDC.DrawLine = function(oDC, ...)
+        nLines = nLines + 1;
+        return fDrawLine(oDC, ...);
+    end;
+    oCueDC.DrawRectangle = function(oDC, ...)
+        nHighlights = nHighlights + 1;
+        return fDrawRectangle(oDC, ...);
+    end;
+    oRows.drawRowPrefix(oCueDC, 3, 4, 4 + nRowHeight * 2, 360, nRowHeight);
+    check(nHighlights == 1 and nLines == 0, "TreeEx middle target draws a highlight without a line.");
+    nHighlights = 0;
+    oRows.handlePointer("move", 96, 5 + nRowHeight * 2);
+    oRows.drawRowPrefix(oCueDC, 3, 4, 4 + nRowHeight * 2, 360, nRowHeight);
+    check(nLines == 1 and nHighlights == 0 and oRows.HoverRow == 0,
+        "TreeEx sibling target draws only its insertion line.");
+    oCueDC:SelectObject(_wx.wxNullBitmap); oCueDC:delete(); oCueBitmap:delete();
+    oRows.handlePointer("up", 96, 4 + nRowHeight * 2 + nRowHeight // 2);
+    check(tMove and tMove.Id == "source" and tMove.Parent == "target" and tMove.Index == 1
+        and oDragTree.getNode("source").Parent == "target", "TreeEx middle drop reparents a node.");
+    check(oDragTree.isChecked("child") and oDragTree.getValue() == "child" and #oDragTree.getSelected() == 2
+        and oDragTree.getNode("source").Expanded and oDragTree.getNode("target").Expanded,
+        "TreeEx drag preserves check, expansion and selected IDs under a collapsed destination.");
+    tMove = nil;
+    oRows.handlePointer("down", 96, 4 + nRowHeight // 2);
+    oRows.handlePointer("move", 96, 4 + nRowHeight + nRowHeight // 2);
+    oRows.handlePointer("up", 96, 4 + nRowHeight + nRowHeight // 2);
+    check(tMove == nil and oDragTree.getNode("source").Parent == "target"
+        and not pcall(oDragTree.moveNode, "target", "child"), "TreeEx rejects drops and moves into descendants.");
+    oRows.handlePointer("down", 96, 4 + nRowHeight * 3 + nRowHeight // 2);
+    oRows.handlePointer("move", 96, 5);
+    oRows.handlePointer("up", 96, 5);
+    check(tMove and tMove.Id == "other" and oDragTree.getChildren()[1] == "other",
+        "TreeEx upper-quarter drop reorders siblings.");
+    tMove = nil;
+    oRows.handlePointer("down", 96, 4 + nRowHeight // 2);
+    oRows.handlePointer("move", 96, 4 + nRowHeight + nRowHeight // 2);
+    oRows.handleKey("down", _wx.WXK_ESCAPE);
+    oRows.handlePointer("up", 96, 4 + nRowHeight + nRowHeight // 2);
+    check(tMove == nil and oDragTree.getChildren()[1] == "other", "Escape cancels a TreeEx drag.");
+    local nTargetBottom = 4 + 2 * nRowHeight - 1;
+    oRows.handlePointer("down", 96, 4 + nRowHeight // 2);
+    oRows.handlePointer("move", 96, nTargetBottom);
+    oRows.handlePointer("up", 96, nTargetBottom);
+    check(tMove and tMove.Id == "other" and tMove.Index == 2 and oDragTree.getChildren()[2] == "other",
+        "TreeEx lower-quarter drop inserts after the target subtree.");
+    oDragTree.destroy(); oDragTree.Control:Destroy();
+
     oList.destroy();
     oTree.destroy();
     oTree.destroy();

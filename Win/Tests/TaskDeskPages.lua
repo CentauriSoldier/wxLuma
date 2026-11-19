@@ -169,39 +169,29 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
         end}, 0.53, 42, 0.15, 74);
     fPut(tBuild, "WorkersComplete", "label", {Value = "Adjust the worker dial; completed changes appear here.", Wrap = true}, 0, 120, 1, 28);
     fPut(tBuild, "BuildLabel", "label", {Value = "Build capacity / worker allocation", Wrap = true}, 0.72, 56, 0.28, 48);
-    local tUsage = fSection(tResources, "Unified progress: bar · arc · globe · radial", 354);
+    local tUsage = fSection(tResources, "Unified progress: bar · arc · globe · radial", 204);
     local P = oLuma.Progress;
-    local tComparisons = {};
+    local tDirectionalMeters = {};
     for nIndex, tMeter in ipairs({{"Package", P.Shape.RECTANGLE, P.Fill.LINEAR},
         {"Processor", P.Shape.CIRCLE, P.Fill.ANGULAR}, {"Storage", P.Shape.CIRCLE, P.Fill.LINEAR},
         {"Memory", P.Shape.CIRCLE, P.Fill.RADIAL}}) do
         tMeters[#tMeters + 1] = fPut(tUsage, tMeter[1], "progress", {Shape = tMeter[2], FillMode = tMeter[3],
             Direction = P.Direction.FORWARD, Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"},
             (nIndex - 1) * 0.25, nIndex == 1 and 42 or 0, 0.23, nIndex == 1 and 36 or 112);
-        local sLegacy = ({"progress", "circularProgress", "globeProgress", "radialProgress"})[nIndex];
-        local oOriginal = fPut(tUsage, tMeter[1].."Original", sLegacy,
-            {Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"},
-            (nIndex - 1) * 0.25, nIndex == 1 and 196 or 154, 0.23, nIndex == 1 and 36 or 112);
-        tComparisons[#tComparisons + 1] = {Unified = tObjects[tMeter[1]], Original = oOriginal};
-        tMeters[#tMeters + 1] = oOriginal;
+        tDirectionalMeters[#tDirectionalMeters + 1] = tObjects[tMeter[1]];
     end
-    fPut(tUsage, "ProgressCompareLabel", "label", {Value = "Top: numeric interface. Bottom: original controls. Both rows share capacity, direction and reserve.", Wrap = true}, 0, 118, 1, 32);
     fPut(tUsage, "ProgressDirection", "dropdown", {Items = {"Direction: forward (0)", "Direction: reverse (1)"}, Value = 1,
         OnChange = function(nIndex)
-            for _, tPair in ipairs(tComparisons) do
-                tPair.Unified.setFillDirection(nIndex - 1, true);
-                if (tPair.Original) then
-                    if (tPair.Original.setOrigin) then tPair.Original.setOrigin(tPair.Unified.getOrigin(), true);
-                    else tPair.Original.setDirection(tPair.Unified.getDirection(), true); end
-                end
+            for _, oMeter in ipairs(tDirectionalMeters) do
+                oMeter.setFillDirection(nIndex - 1, true);
             end
-        end}, 0, 278, 0.48, 36);
+        end}, 0, 126, 0.48, 36);
     fPut(tUsage, "ProgressReserve", "dropdown", {Items = {"Reserved: 0", "Reserved: 25", "Reserved: 50", "Reserved: 100"}, Value = 1,
         OnChange = function(nIndex)
             local nReserve = ({0, 25, 50, 100})[nIndex];
             for _, oMeter in ipairs(tMeters) do oMeter.setReserved(nReserve, true); oMeter.setValue(tSettings.Capacity); end
-        end}, 0.52, 278, 0.48, 36);
-    fPut(tUsage, "ProgressHint", "label", {Value = "Change direction or reserve; adjust capacity above. A reserve of 100 leaves no usable capacity.", Wrap = true}, 0, 322, 1, 32);
+        end}, 0.52, 126, 0.48, 36);
+    fPut(tUsage, "ProgressHint", "label", {Value = "Change direction or reserve; adjust capacity above. A reserve of 100 leaves no usable capacity.", Wrap = true}, 0, 168, 1, 32);
     local tPolygon = fSection(tResources, "Polygon progress: linear · radial · angular", 362);
     local tPentagon = {{X = 0.5, Y = 0}, {X = 1, Y = 0.3}, {X = 0.85, Y = 1}, {X = 0.15, Y = 1}, {X = 0, Y = 0.3}};
     local tConcave = {{X = 0, Y = 0}, {X = 1, Y = 0.08}, {X = 0.57, Y = 0.47},
@@ -212,7 +202,7 @@ function TaskDeskPages.create(oLuma, Controls, oFrame, oTabs, tApp)
             Polygon = tPentagon, Orientation = "vertical", Direction = P.Direction.FORWARD,
             Min = 0, Max = 100, Value = 65, Text = "%v%", Appearance = "skin"}, mode * 0.34, 0, 0.3, 142);
         tPolygonMeters[#tPolygonMeters + 1] = oMeter; tMeters[#tMeters + 1] = oMeter;
-        tComparisons[#tComparisons + 1] = {Unified = oMeter};
+        tDirectionalMeters[#tDirectionalMeters + 1] = oMeter;
     end
     for index, text in ipairs({"Linear fill", "Radial in/out", "Angular sweep"}) do
         fPut(tPolygon, "PolygonMode"..index, "label", {Value = text, Wrap = true}, (index - 1) * 0.34, 146, 0.3, 28);

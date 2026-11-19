@@ -115,11 +115,11 @@ local function run()
     local oExternal = _Controls.loadSkin(pTemp);
     local oFrame = _wx.wxFrame(_wx.NULL, _wx.wxID_ANY, "Progress skin regression",
         _wx.wxDefaultPosition, _wx.wxSize(700, 400));
-    local oCircle = _Controls.circularProgress(oFrame, {Skin = oExternal, Min = 0, Max = 100,
+    local oCircle = _Controls.progress(oFrame, {Shape = 1, FillMode = 2, Skin = oExternal, Min = 0, Max = 100,
         Value = 25, Text = "", Artwork = sArtwork});
     local oLinear = _Controls.progress(oFrame, {Skin = oExternal, Min = 0, Max = 100,
         Value = 25, Text = "", Artwork = sArtwork, Appearance = "skin"});
-    local oColour = _Controls.circularProgress(oFrame, {Skin = oSkin, Min = 0, Max = 100,
+    local oColour = _Controls.progress(oFrame, {Shape = 1, FillMode = 2, Skin = oSkin, Min = 0, Max = 100,
         Value = 100, Text = "", Colour = {R = 200, G = 100, B = 50}});
     oCircle.layout(0, 0, 100, 100);
     oLinear.layout(150, 0, 208, 40);
@@ -223,7 +223,7 @@ local function run()
     oDC:SelectObject(oPreview);
     oDC:SetBackground(oBackground);
     oDC:Clear();
-    local oDemo = _Controls.circularProgress(oFrame, {Skin = oSkin, Min = 0, Max = 100, Value = 65, Text = "%v%"});
+    local oDemo = _Controls.progress(oFrame, {Shape = 1, FillMode = 2, Skin = oSkin, Min = 0, Max = 100, Value = 65, Text = "%v%"});
     oDC:SetDeviceOrigin(20, 20);
     oDemo.draw(oDC, 160, 160);
     oDemo.setAppearance("colour");

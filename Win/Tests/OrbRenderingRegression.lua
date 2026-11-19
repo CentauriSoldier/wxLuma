@@ -45,7 +45,9 @@ local function run()
     end
 
     for _, sFactory in ipairs({"globeProgress", "radialProgress", "irisProgress"}) do
-        local oMeter = _Controls[sFactory](oFrame, {Skin = oSkin, Min = 0, Max = 100,
+        local nFillMode = ({globeProgress = 0, radialProgress = 1})[sFactory];
+        local fCreate = sFactory == "irisProgress" and _Controls.irisProgress or _Controls.progress;
+        local oMeter = fCreate(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode, Skin = oSkin, Min = 0, Max = 100,
             Value = 0, Text = "", Supersampling = 2});
 
         for _, nReserve in ipairs({0, 25}) do
@@ -105,7 +107,7 @@ local function run()
             oMeter.setEnabled(bEnabled);
             oMeter.setReserved(nReserve);
             oMeter.setValue(nValue);
-            local oFresh = _Controls[sFactory](oFrame, {Skin = oSkin, Min = 0, Max = 100,
+            local oFresh = fCreate(oFrame, {Shape = nFillMode and 1, FillMode = nFillMode, Skin = oSkin, Min = 0, Max = 100,
                 Value = nValue, Text = "", Supersampling = nScale, Appearance = sAppearance,
                 Enabled = bEnabled, Reserved = nReserve});
             check(fPixels(oMeter, nSize) == fPixels(oFresh, nSize),
